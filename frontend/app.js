@@ -530,45 +530,56 @@ function float32ToInt16(float32) {
     return int16;
 }
 
-// ============ 处理服务端消息 ============
+// ============ 处理服务端消息 ============ 
 function handleServerMessage(msg) {
     switch (msg.type) {
         case "ready":
-            console.log("[前端] 服务端就绪，会话已配置");
+            console.log("[前端] 服务端就绪，千问会话已配置");
             break;
 
         case "speech_started":
         case "item_created":
         case "response_created":
             // 检测到新段落开始，创建新的双span结构
-            console.log("[前端] 检测到新段落开始，创建新的段落");
+            ensureSourceSegment();
+            ensureTargetSegment();
             break;
 
         case "source_text_delta":
-            //既有确认项又有待确认项
-            console.log("[前端] 原文增量版本", msg.confirmed, msg.stash);
+            //原文既有确认文本又有增量文本时，更新双span显示
+            updateSourceSegment(msg.confirmed, msg.stash);
             break;
 
         case "source_text_final":
             // 避免重复固定
-            console.log("[前端] 原文确认版本", msg.text);
+            if (currentSourceSegment) {
+                finalizeSourceSegment(msg.text);
+            }
             break;
 
         case "translation_delta":
-            //既有确认项又有待确认项
-            console.log("[前端] 翻译增量版本", msg.confirmed, msg.stash);
+            //翻译既有确认文本又有增量文本时，更新双span显示
+            updateTargetSegment(msg.confirmed, msg.stash);
             break;
 
         case "translation_final":
-            console.log("[前端] 翻译确认版本", msg.text);
+            // translation_final 和 response_done 可能都触发，只处理一次
+            if (currentTargetSegment) {
+                finalizeTargetSegment(msg.text);
+            }
             break;
 
         case "response_done":
             console.log("[前端] 一轮响应完成", msg.usage);
+            // response.done 包含最终翻译文本，但只在 translation_final 没触发时处理
+            if (msg.text && currentTargetSegment) {
+                finalizeTargetSegment(msg.text);
+            }
             break;
 
         case "session_end":
             console.log("[前端] 会话结束");
+            stopTranslation();
             break;
 
         case "error":
@@ -580,6 +591,109 @@ function handleServerMessage(msg) {
             console.log("[前端] 连接关闭:", msg.reason);
             break;
     }
+}
+
+// ============ 双span段落管理 ============
+function ensureSourceSegment() {
+    if (!currentSourceSegment) {
+        const finalSpan = document.createElement("span");
+        finalSpan.className = "final";
+        sourceText.appendChild(finalSpan);
+
+        const stashSpan = document.createElement("span");
+        stashSpan.className = "streaming";
+        sourceText.appendChild(stashSpan);
+
+        currentSourceSegment = { finalSpan, stashSpan };
+    }
+}
+
+function ensureTargetSegment() {
+    if (!currentTargetSegment) {
+        const finalSpan = document.createElement("span");
+        finalSpan.className = "final";
+        targetText.appendChild(finalSpan);
+
+        const stashSpan = document.createElement("span");
+        stashSpan.className = "streaming";
+        targetText.appendChild(stashSpan);
+
+        currentTargetSegment = { finalSpan, stashSpan };
+    }
+}
+
+function updateSourceSegment(confirmed, stash) {
+    ensureSourceSegment();
+    currentSourceSegment.finalSpan.textContent = confirmed;
+    currentSourceSegment.stashSpan.textContent = stash;
+    sourceArea.scrollTop = sourceArea.scrollHeight;
+}
+
+function updateTargetSegment(confirmed, stash) {
+    ensureTargetSegment();
+    currentTargetSegment.finalSpan.textContent = confirmed;
+    currentTargetSegment.stashSpan.textContent = stash;
+    targetArea.scrollTop = targetArea.scrollHeight;
+}
+
+function finalizeSourceSegment(text) {
+    if (currentSourceSegment) {
+        currentSourceSegment.finalSpan.textContent = text + " ";
+        currentSourceSegment.stashSpan.remove();
+        currentSourceSegment = null;
+    } else {
+        const span = document.createElement("span");
+        span.className = "final";
+        span.textContent = text + " ";
+        sourceText.appendChild(span);
+    }
+    sourceSegments.push(text);
+    sourceArea.scrollTop = sourceArea.scrollHeight;
+}
+
+function finalizeTargetSegment(text) {
+    if (currentTargetSegment) {
+        currentTargetSegment.finalSpan.textContent = text + " ";
+        currentTargetSegment.stashSpan.remove();
+        currentTargetSegment = null;
+    } else {
+        const span = document.createElement("span");
+        span.className = "final";
+        span.textContent = text + " ";
+        targetText.appendChild(span);
+    }
+    targetSegments.push(text);
+    targetArea.scrollTop = targetArea.scrollHeight;
+}
+
+// ============ 计时器 ============
+function updateTimer() {
+    if (isPaused) return;
+    const elapsed = Math.floor((Date.now() - startTime - totalPaused) / 1000);
+    const h = Math.floor(elapsed / 3600).toString().padStart(2, "0");
+    const m = Math.floor((elapsed % 3600) / 60).toString().padStart(2, "0");
+    const s = (elapsed % 60).toString().padStart(2, "0");
+    fcTimer.textContent = `${h}:${m}:${s}`;
+}
+
+// ============ 字号控制 ============
+function increaseFontSize() {
+    if (currentFontSize < MAX_FONT_SIZE) {
+        currentFontSize++;
+        updateFontSize();
+    }
+}
+
+function decreaseFontSize() {
+    if (currentFontSize > MIN_FONT_SIZE) {
+        currentFontSize--;
+        updateFontSize();
+    }
+}
+
+function updateFontSize() {
+    sourceText.style.fontSize = `${currentFontSize}px`;
+    targetText.style.fontSize = `${currentFontSize}px`;
 }
 
 // ============ 视图模式切换 ============
