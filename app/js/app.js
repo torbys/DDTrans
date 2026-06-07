@@ -12,6 +12,7 @@ import * as audioSource from './audio-source.js';
 import * as audioTest from './audio-test.js';
 import * as translation from './translation.js';
 import { buildVolumeBars } from './utils.js';
+import { TEXT_ONLY_LANGS } from './config.js';
 
 // ============ 初始化 ============
 function init() {
@@ -46,10 +47,53 @@ function init() {
 
     // AI语音切换
     dom.aiVoiceBtn.addEventListener("click", () => {
+        if (dom.aiVoiceBtn.disabled) return;
         const enabled = !state.aiVoiceEnabled;
         state.setAiVoiceEnabled(enabled);
         dom.aiVoiceBtn.setAttribute("aria-pressed", enabled);
     });
+
+    // AI语音hint tooltip（全局层级，避免被其他元素遮挡）
+    function showAiVoiceTooltip() {
+        if (!dom.aiVoiceHint || !dom.aiVoiceTooltip) return;
+        const rect = dom.aiVoiceHint.getBoundingClientRect();
+        const tooltipWidth = 320;
+        // 计算水平居中位置，确保不超出视口
+        let left = rect.left + rect.width / 2 - tooltipWidth / 2;
+        left = Math.max(10, Math.min(left, window.innerWidth - tooltipWidth - 10));
+        // 显示在图标下方
+        const top = rect.bottom + 8;
+        dom.aiVoiceTooltip.style.left = left + "px";
+        dom.aiVoiceTooltip.style.top = top + "px";
+        dom.aiVoiceTooltip.classList.add("show");
+    }
+    function hideAiVoiceTooltip() {
+        if (dom.aiVoiceTooltip) {
+            dom.aiVoiceTooltip.classList.remove("show");
+        }
+    }
+    if (dom.aiVoiceHint) {
+        dom.aiVoiceHint.addEventListener("mouseenter", showAiVoiceTooltip);
+        dom.aiVoiceHint.addEventListener("mouseleave", hideAiVoiceTooltip);
+    }
+
+    // 检查目标语言是否支持AI语音
+    function checkAiVoiceSupport() {
+        const targetCode = state.currentTargetLang;
+        const isTextOnly = TEXT_ONLY_LANGS.includes(targetCode);
+        if (isTextOnly) {
+            // 禁用AI语音
+            state.setAiVoiceEnabled(false);
+            dom.aiVoiceBtn.setAttribute("aria-pressed", "false");
+            dom.aiVoiceBtn.disabled = true;
+            dom.aiVoiceWrapper.classList.add("disabled");
+        } else {
+            dom.aiVoiceBtn.disabled = false;
+            dom.aiVoiceWrapper.classList.remove("disabled");
+        }
+    }
+    // 初始检查
+    checkAiVoiceSupport();
 
     // 热词配置弹窗
     function openHotwordModal() {
@@ -147,6 +191,79 @@ function init() {
 
     // 浮动控制条
     dom.fcPauseBtn.addEventListener("click", translation.togglePause);
+
+    // 底部声源切换面板
+    function updateFcSourceLabel() {
+        const useSys = dom.fcSpSystemAudio.checked;
+        const useMic = dom.fcSpMicAudio.checked;
+        if (useSys && useMic) {
+            dom.fcSourceLabel.textContent = "混合声源";
+        } else if (useSys) {
+            dom.fcSourceLabel.textContent = "电脑声音";
+        } else if (useMic) {
+            dom.fcSourceLabel.textContent = "麦克风";
+        } else {
+            dom.fcSourceLabel.textContent = "请选择声源";
+        }
+    }
+
+    function syncFcSourceToState() {
+        state.setUseSystemAudio(dom.fcSpSystemAudio.checked);
+        state.setUseMicAudio(dom.fcSpMicAudio.checked);
+        // 同步到开始按钮旁的声源面板
+        dom.aspSystemAudio.checked = dom.fcSpSystemAudio.checked;
+        dom.aspMicAudio.checked = dom.fcSpMicAudio.checked;
+        audioSource.updateAudioSourceLabel();
+    }
+
+    if (dom.fcSourceBtn) {
+        dom.fcSourceBtn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            const isShow = dom.fcSourcePanel.classList.contains("show");
+            if (isShow) {
+                dom.fcSourcePanel.classList.remove("show");
+                dom.fcSourceArrow.classList.remove("ri-arrow-down-s-line");
+                dom.fcSourceArrow.classList.add("ri-arrow-up-s-line");
+            } else {
+                dom.fcSourcePanel.classList.add("show");
+                dom.fcSourceArrow.classList.remove("ri-arrow-up-s-line");
+                dom.fcSourceArrow.classList.add("ri-arrow-down-s-line");
+            }
+        });
+    }
+
+    document.addEventListener("click", () => {
+        if (dom.fcSourcePanel) dom.fcSourcePanel.classList.remove("show");
+        if (dom.fcSourceArrow) {
+            dom.fcSourceArrow.classList.remove("ri-arrow-down-s-line");
+            dom.fcSourceArrow.classList.add("ri-arrow-up-s-line");
+        }
+    });
+
+    if (dom.fcSourcePanel) {
+        dom.fcSourcePanel.addEventListener("click", (e) => {
+            e.stopPropagation();
+        });
+    }
+
+    if (dom.fcSpSystemAudio) {
+        dom.fcSpSystemAudio.addEventListener("change", () => {
+            updateFcSourceLabel();
+            syncFcSourceToState();
+            if (state.isRunning) {
+                translation.switchAudioSource();
+            }
+        });
+    }
+    if (dom.fcSpMicAudio) {
+        dom.fcSpMicAudio.addEventListener("change", () => {
+            updateFcSourceLabel();
+            syncFcSourceToState();
+            if (state.isRunning) {
+                translation.switchAudioSource();
+            }
+        });
+    }
 
     // 停止按钮打开确认弹窗
     dom.fcStopBtn.addEventListener("click", () => {
@@ -280,7 +397,18 @@ function init() {
     lang.initLangDropdown("target", dom.targetLangDropdown, dom.targetLangTrigger, dom.targetLangMenu, dom.targetLangName, dom.targetLangNative);
 
     // 交换语言按钮
-    dom.langSwapBtn.addEventListener("click", lang.swapLanguages);
+    dom.langSwapBtn.addEventListener("click", () => {
+        lang.swapLanguages();
+        checkAiVoiceSupport();
+    });
+
+    // 监听目标语言变化，检查AI语音支持
+    const targetLangObserver = new MutationObserver(() => {
+        checkAiVoiceSupport();
+    });
+    if (dom.targetLangName) {
+        targetLangObserver.observe(dom.targetLangName, { childList: true });
+    }
 
     // 音频输入源面板
     dom.audioSourceBtn.addEventListener("click", (e) => {

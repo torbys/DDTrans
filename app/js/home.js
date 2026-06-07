@@ -19,7 +19,6 @@ const modalClose = document.getElementById("modalClose");
 const modalCancel = document.getElementById("modalCancel");
 const modalConfirm = document.getElementById("modalConfirm");
 const meetingNameInput = document.getElementById("meetingNameInput");
-const hotwordsInput = document.getElementById("hotwordsInput");
 
 // 弹窗语言选择
 const modalSourceLangDropdown = document.getElementById("modalSourceLangDropdown");
@@ -113,14 +112,12 @@ function closeModal() {
 
 function confirmCreate() {
     const meetingName = meetingNameInput.value.trim() || "未命名会议";
-    const hotwords = hotwordsInput.value.trim();
 
     // 构建 URL 参数
     const params = new URLSearchParams();
     params.set("name", meetingName);
     params.set("sourceLang", modalSourceLang);
     params.set("targetLang", modalTargetLang);
-    if (hotwords) params.set("hotwords", hotwords);
     if (modalSelectedDeviceId) params.set("audioDevice", modalSelectedDeviceId);
 
     window.location.href = `./index.html?${params.toString()}`;

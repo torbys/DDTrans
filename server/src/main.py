@@ -111,15 +111,13 @@ async def translate_websocket(client_ws: WebSocket):
                             ctrl = json.loads(text)
                             ctrl_type = ctrl.get("type")
                             if ctrl_type == "pause":
-                                log.info("收到暂停信号，发送 session.finish")
+                                log.info("收到暂停信号，停止接收音频数据")
                                 is_paused = True
-                                await translator.finish_session()
                                 await client_ws.send_json({"type": "paused"})
                                 continue
                             elif ctrl_type == "resume":
-                                log.info("收到恢复信号，重置会话状态")
+                                log.info("收到恢复信号，恢复接收音频数据")
                                 is_paused = False
-                                await translator.reset_session()
                                 await client_ws.send_json({"type": "resumed"})
                                 continue
                         except Exception:

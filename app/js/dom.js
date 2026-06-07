@@ -28,6 +28,8 @@ export let connectionStatusEl = null;
 // AI语音
 export const aiVoiceBtn = document.getElementById("aiVoiceBtn");
 export const aiVoiceWrapper = document.getElementById("aiVoiceWrapper");
+export const aiVoiceHint = document.getElementById("aiVoiceHint");
+export const aiVoiceTooltip = document.getElementById("aiVoiceTooltip");
 
 // 热词配置弹窗
 export const hotwordBtn = document.getElementById("hotwordBtn");
@@ -88,6 +90,12 @@ export const fcStopBtn = document.getElementById("fcStopBtn");
 export const fcAudioPlayBtn = document.getElementById("fcAudioPlayBtn");
 export const fcTimer = document.getElementById("fcTimer");
 export const fcVolumeBars = document.getElementById("fcVolumeBars");
+export const fcSourceBtn = document.getElementById("fcSourceBtn");
+export const fcSourceLabel = document.getElementById("fcSourceLabel");
+export const fcSourceArrow = document.getElementById("fcSourceArrow");
+export const fcSourcePanel = document.getElementById("fcSourcePanel");
+export const fcSpSystemAudio = document.getElementById("fcSpSystemAudio");
+export const fcSpMicAudio = document.getElementById("fcSpMicAudio");
 
 // 结束同传确认弹窗
 export const stopConfirmOverlay = document.getElementById("stopConfirmOverlay");

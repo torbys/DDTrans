@@ -27,7 +27,12 @@ export async function getSystemAudioStreamOnly() {
                 mandatory: {
                     chromeMediaSource: 'desktop',
                     chromeMediaSourceId: result.sourceId
-                }
+                },
+                optional: [
+                    { echoCancellation: true },
+                    { noiseSuppression: true },
+                    { autoGainControl: true }
+                ]
             },
             video: {
                 mandatory: {
@@ -75,6 +80,7 @@ export async function getMicAudioStream() {
 
 /**
  * 获取混合音频流（系统音频 + 麦克风）
+ * 使用 Web Audio API 真正混音，而不是简单并列音轨
  */
 export async function getCombinedAudioStream() {
     const [sysStream, micStream] = await Promise.all([
@@ -95,14 +101,28 @@ export async function getCombinedAudioStream() {
     if (!sysStream) return micStream;
     if (!micStream) return sysStream;
 
-    const combinedTracks = [
-        ...sysStream.getAudioTracks(),
-        ...micStream.getAudioTracks()
-    ];
+    // 使用 Web Audio API 真正混音
+    const audioCtx = new AudioContext();
+    const dest = audioCtx.createMediaStreamDestination();
 
-    state.setCombinedStream(new MediaStream(combinedTracks));
-    console.log('[前端] 混合音频流已创建，轨道数:', combinedTracks.length);
-    return state.combinedStream;
+    // 系统音频
+    const sysSource = audioCtx.createMediaStreamSource(sysStream);
+    const sysGain = audioCtx.createGain();
+    sysGain.gain.value = 1.0;
+    sysSource.connect(sysGain);
+    sysGain.connect(dest);
+
+    // 麦克风音频
+    const micSource = audioCtx.createMediaStreamSource(micStream);
+    const micGain = audioCtx.createGain();
+    micGain.gain.value = 1.0;
+    micSource.connect(micGain);
+    micGain.connect(dest);
+
+    const mixedStream = dest.stream;
+    state.setCombinedStream(mixedStream);
+    console.log('[前端] 混合音频流已创建（Web Audio混音），输出轨道数:', mixedStream.getAudioTracks().length);
+    return mixedStream;
 }
 
 /**
