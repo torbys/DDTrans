@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDTrans - AI同声传译助手</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.min.css">
+    <link rel="stylesheet" href="./css/home.css">
+</head>
+<body>
+    <div class="app">
+        <!-- 自定义标题栏（可拖拽） -->
+        <div class="title-bar" id="titleBar">
+            <div class="title-bar-left">
+                <div class="brand">
+                    <div class="brand-icon">
+                        <img src="../resources/icons/logo.png" alt="DDTrans Logo">
+                    </div>
+                    <span class="brand-name">DDTrans</span>
+                </div>
+            </div>
+            <div class="title-bar-right">
+                <span class="user-icon"><i class="ri-user-smile-line"></i></span>
+                <button class="title-bar-btn" id="minimizeBtn" title="最小化">
+                    <i class="ri-subtract-line"></i>
+                </button>
+                <button class="title-bar-btn" id="maximizeBtn" title="最大化/还原">
+                    <i class="ri-fullscreen-line"></i>
+                </button>
+                <button class="title-bar-btn close" id="closeBtn" title="关闭">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- 主页面内容 -->
+        <div class="home-main">
+            <div class="home-header">
+                <h1 class="home-title">DDTrans AI同传</h1>
+                <p class="home-subtitle">高质量、低延迟的会议同传解决方案</p>
+            </div>
+
+            <div class="home-cards">
+                <!-- 创建同传 -->
+                <div class="home-card home-card-primary" id="createMeetingCard">
+                    <div class="card-content">
+                        <h2 class="card-title">创建同传</h2>
+                        <p class="card-desc">体验专属同传</p>
+                    </div>
+                    <div class="card-icon">
+                        <i class="ri-add-line"></i>
+                    </div>
+                    <div class="card-decoration"></div>
+                </div>
+
+                <!-- 同传管理 -->
+                <div class="home-card home-card-secondary" id="manageMeetingCard">
+                    <div class="card-content">
+                        <h2 class="card-title">同传管理</h2>
+                        <p class="card-desc">查看历史记录</p>
+                    </div>
+                    <div class="card-icon">
+                        <i class="ri-folder-open-line"></i>
+                    </div>
+                    <div class="card-decoration"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 创建同传弹窗 -->
+    <div class="modal-overlay" id="createModalOverlay">
+        <div class="modal" id="createModal">
+            <div class="modal-header">
+                <h3>创建同传</h3>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- 会议名称 -->
+                <div class="modal-section">
+                    <label class="modal-label">会议名称</label>
+                    <input type="text" class="modal-input" id="meetingNameInput" placeholder="请输入会议名称">
+                </div>
+
+                <!-- 语言选择 -->
+                <div class="modal-section">
+                    <label class="modal-label">语言选择</label>
+                    <div class="modal-lang-row">
+                        <div class="modal-custom-select" id="modalSourceLangDropdown">
+                            <div class="modal-select-trigger" id="modalSourceLangTrigger">
+                                <span class="modal-select-icon"><i class="ri-global-line"></i></span>
+                                <span class="modal-select-name" id="modalSourceLangName">英语</span>
+                                <span class="modal-select-native" id="modalSourceLangNative">English</span>
+                                <i class="ri-arrow-up-s-line modal-select-arrow"></i>
+                            </div>
+                            <div class="modal-select-menu" id="modalSourceLangMenu"></div>
+                        </div>
+
+                        <button class="modal-swap-btn" id="modalLangSwapBtn" title="交换语言">
+                            <i class="ri-arrow-left-right-line"></i>
+                        </button>
+
+                        <div class="modal-custom-select" id="modalTargetLangDropdown">
+                            <div class="modal-select-trigger" id="modalTargetLangTrigger">
+                                <span class="modal-select-icon"><i class="ri-global-line"></i></span>
+                                <span class="modal-select-name" id="modalTargetLangName">中文</span>
+                                <span class="modal-select-native" id="modalTargetLangNative">中文</span>
+                                <i class="ri-arrow-up-s-line modal-select-arrow"></i>
+                            </div>
+                            <div class="modal-select-menu" id="modalTargetLangMenu"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 热词输入 -->
+                <div class="modal-section">
+                    <label class="modal-label">热词输入</label>
+                    <textarea class="modal-textarea" id="hotwordsInput" placeholder="请输入关键热词，多个热词用逗号分隔"></textarea>
+                </div>
+
+                <!-- 声音输入测试 -->
+                <div class="modal-section">
+                    <label class="modal-label">声音输入测试</label>
+                    <div class="audio-test-row">
+                        <div class="modal-custom-select" id="modalAudioDeviceDropdown">
+                            <div class="modal-select-trigger" id="modalAudioDeviceTrigger">
+                                <span class="modal-select-name" id="modalAudioDeviceName">选择音频设备</span>
+                                <i class="ri-arrow-up-s-line modal-select-arrow"></i>
+                            </div>
+                            <div class="modal-select-menu" id="modalAudioDeviceMenu"></div>
+                        </div>
+                        <div class="volume-bars" id="modalVolumeBars"></div>
+                    </div>
+                    <div class="audio-test-status" id="modalAudioTestStatus">请选择音频设备进行测试</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="modal-btn modal-btn-cancel" id="modalCancel">取消</button>
+                <button class="modal-btn modal-btn-confirm" id="modalConfirm">确定</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module" src="./js/home.js"></script>
+</body>
+</html>

@@ -18,8 +18,8 @@ function createWindow() {
     show: false
   });
 
-  // 加载前端页面
-  mainWindow.loadFile(path.join(__dirname, '../app/index.html'));
+  // 加载主页面
+  mainWindow.loadFile(path.join(__dirname, '../app/home.html'));
 
   // 打开开发者工具（开发模式）
   if (process.argv.includes('--dev')) {
