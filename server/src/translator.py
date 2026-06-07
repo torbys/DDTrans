@@ -136,7 +136,7 @@ class QwenTranslator:
                 event_type = event.get("type", "")
 
                 # 打印完整事件JSON
-                log.api_recv(f"{event_type} | 完整事件: {json.dumps(event, indent=2, ensure_ascii=False)}")
+                log.api_recv(f"{event_type} | 收到事件")
 
                 if event_type == "session.finished":
                     self._session_finished.set()

@@ -232,9 +232,27 @@ async function initAudioDeviceDropdown() {
         const devices = await navigator.mediaDevices.enumerateDevices();
         const audioInputs = devices.filter((d) => d.kind === "audioinput");
 
+        // 过滤系统虚拟设备（与 audio-source.js 保持一致）
+        const filteredInputs = audioInputs.filter((d) => {
+            // 跳过 default 和 communications 设备ID
+            if (d.deviceId === "default" || d.deviceId === "communications") {
+                return false;
+            }
+            const label = d.label || "";
+            // 跳过以 Default / Communications 开头的 label
+            if (/^Default\s*[-–—]/i.test(label) || /^Communications\s*[-–—]/i.test(label)) {
+                return false;
+            }
+            // 跳过立体声混音
+            if (label.includes("立体声混音") || label.includes("Stereo Mix")) {
+                return false;
+            }
+            return true;
+        });
+
         // 去重：按 label 去重，保留第一个
         const seenLabels = new Set();
-        const uniqueInputs = audioInputs.filter((d) => {
+        const uniqueInputs = filteredInputs.filter((d) => {
             if (!d.label || seenLabels.has(d.label)) return false;
             seenLabels.add(d.label);
             return true;

@@ -20,31 +20,28 @@ export async function enumerateAudioDevices() {
 function renderMicDeviceList() {
     dom.aspMicSub.innerHTML = "";
 
-    // 去重：根据 label 去重，保留第一个出现的设备
+    // 过滤并去重：只保留真实麦克风硬件
     const seenLabels = new Set();
     const uniqueDevices = [];
     state.audioInputDevices.forEach((device) => {
         const label = device.label || "";
-        // 跳过 "default" / "communications" 这类系统虚拟设备，只保留真实硬件
+        // 跳过系统虚拟设备、立体声混音等非麦克风设备
         if (device.deviceId === "default" || device.deviceId === "communications") {
             return;
         }
+        // 跳过 label 中包含 Default / Communications / 立体声混音 的设备
+        if (/^Default\s*[-–—]/i.test(label) || /^Communications\s*[-–—]/i.test(label)) {
+            return;
+        }
+        if (label.includes("立体声混音") || label.includes("Stereo Mix")) {
+            return;
+        }
+        // 去重
         if (!seenLabels.has(label)) {
             seenLabels.add(label);
             uniqueDevices.push(device);
         }
     });
-
-    if (uniqueDevices.length === 0) {
-        // 如果没有真实设备，回退到所有设备
-        state.audioInputDevices.forEach((device) => {
-            const label = device.label || "";
-            if (!seenLabels.has(label)) {
-                seenLabels.add(label);
-                uniqueDevices.push(device);
-            }
-        });
-    }
 
     uniqueDevices.forEach((device, index) => {
         const div = document.createElement("div");
@@ -54,12 +51,7 @@ function renderMicDeviceList() {
         const nameSpan = document.createElement("span");
         nameSpan.textContent = device.label || `麦克风 ${index + 1}`;
 
-        const labelSpan = document.createElement("span");
-        labelSpan.className = "asp-sub-label";
-        labelSpan.textContent = device.deviceId === "default" ? "默认设备" : "";
-
         div.appendChild(nameSpan);
-        div.appendChild(labelSpan);
 
         div.addEventListener("click", () => {
             if (!state.useMicAudio) return;
