@@ -5,6 +5,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   platform: process.platform,
   versions: process.versions,
 
+  // 窗口控制
+  minimizeWindow: () => ipcRenderer.invoke('window-minimize'),
+  maximizeWindow: () => ipcRenderer.invoke('window-maximize'),
+  closeWindow: () => ipcRenderer.invoke('window-close'),
+
   // 获取系统音频源（通过 desktopCapturer）
   getSystemAudioSources: () => ipcRenderer.invoke('get-system-audio-sources'),
 

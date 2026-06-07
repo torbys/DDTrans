@@ -20,18 +20,14 @@ log = get_logger()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    log.info(f"==================================================")
-    log.info(f"  AI 同声传译助手 服务端已启动")
-    log.info(f"  访问地址: http://localhost:{SERVER_PORT}")
-    log.info(f"  日志文件: {log.log_path}")
-    log.info(f"==================================================")
+    log.info(f"服务端已启动 | http://localhost:{SERVER_PORT}")
     yield
 
 
 app = FastAPI(title="AI 同声传译助手", lifespan=lifespan)
 
 # 前端静态文件目录
-FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "frontend")
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "..", "..", "app")
 
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
 

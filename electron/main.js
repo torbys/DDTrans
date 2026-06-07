@@ -14,12 +14,12 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, 'preload.js')
     },
-    titleBarStyle: 'hiddenInset',
+    frame: false,
     show: false
   });
 
   // 加载前端页面
-  mainWindow.loadFile(path.join(__dirname, '../frontend/index.html'));
+  mainWindow.loadFile(path.join(__dirname, '../app/index.html'));
 
   // 打开开发者工具（开发模式）
   if (process.argv.includes('--dev')) {
@@ -47,6 +47,26 @@ app.on('activate', () => {
   if (BrowserWindow.getAllWindows().length === 0) {
     createWindow();
   }
+});
+
+// ============ IPC: 窗口控制 ============
+
+ipcMain.handle('window-minimize', () => {
+  if (mainWindow) mainWindow.minimize();
+});
+
+ipcMain.handle('window-maximize', () => {
+  if (mainWindow) {
+    if (mainWindow.isMaximized()) {
+      mainWindow.unmaximize();
+    } else {
+      mainWindow.maximize();
+    }
+  }
+});
+
+ipcMain.handle('window-close', () => {
+  if (mainWindow) mainWindow.close();
 });
 
 // ============ IPC: 系统音频采集 ============
