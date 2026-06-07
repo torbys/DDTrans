@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 同声传译助手</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.min.css">
+    <link rel="stylesheet" href="./css/style.css">
+</head>
+<body>
+    <div class="app">
+        <!-- 自定义标题栏（可拖拽） -->
+        <div class="title-bar" id="titleBar">
+            <div class="title-bar-left">
+                <button class="title-bar-nav" id="homeBtn" title="返回主页">
+                    <i class="ri-arrow-left-s-line"></i>
+                </button>
+                <span class="session-title" id="sessionTitle">2026年06月07日_记录_1</span>
+                <span class="tag tag-green"><i class="ri-shield-check-line"></i> 会议记录自动保存</span>
+                <span class="tag tag-green"><i class="ri-shield-check-line"></i> 数据安全保护</span>
+                <span class="tag tag-gray">翻译内容和播报声音由AI生成</span>
+            </div>
+            <div class="title-bar-right">
+                <span class="timer" id="timerDisplay">00:19:48</span>
+                <span class="user-icon"><i class="ri-user-smile-line"></i></span>
+                <button class="title-bar-btn" id="minimizeBtn" title="最小化">
+                    <i class="ri-subtract-line"></i>
+                </button>
+                <button class="title-bar-btn" id="maximizeBtn" title="最大化/还原">
+                    <i class="ri-fullscreen-line"></i>
+                </button>
+                <button class="title-bar-btn close" id="closeBtn" title="关闭">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- 控制栏 -->
+        <div class="toolbar">
+            <div class="toolbar-left">
+                <div class="dropdown" id="modelDropdown">
+                    <i class="ri-settings-3-line"></i>
+                    <span>通用模型</span>
+                    <i class="ri-arrow-down-s-line"></i>
+                </div>
+                <div class="lang-switch" id="langSwitch">
+                    <!-- 源语言自定义下拉 -->
+                    <div class="custom-select" id="sourceLangDropdown">
+                        <div class="custom-select-trigger" id="sourceLangTrigger">
+                            <span class="lang-icon"><i class="ri-global-line"></i></span>
+                            <span class="lang-name" id="sourceLangName">英语</span>
+                            <span class="lang-native" id="sourceLangNative">English</span>
+                            <i class="ri-arrow-up-s-line arrow"></i>
+                        </div>
+                        <div class="custom-select-menu" id="sourceLangMenu"></div>
+                    </div>
+
+                    <button class="lang-swap-btn" id="langSwapBtn" title="交换语言">
+                        <i class="ri-arrow-left-right-line"></i>
+                    </button>
+
+                    <!-- 目标语言自定义下拉 -->
+                    <div class="custom-select" id="targetLangDropdown">
+                        <div class="custom-select-trigger" id="targetLangTrigger">
+                            <span class="lang-icon"><i class="ri-global-line"></i></span>
+                            <span class="lang-name" id="targetLangName">中文</span>
+                            <span class="lang-native" id="targetLangNative">中文</span>
+                            <i class="ri-arrow-up-s-line arrow"></i>
+                        </div>
+                        <div class="custom-select-menu" id="targetLangMenu"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="toolbar-center">
+                <button class="btn-chip active" id="effectBtn">
+                    <i class="ri-magic-line"></i> 效果优化
+                </button>
+                <button class="btn-chip" id="shareBtn">
+                    <i class="ri-share-box-line"></i> 分享字幕
+                </button>
+                <button class="btn-chip" id="audioTestBtn">
+                    <i class="ri-mic-line"></i> 麦克风测试
+                </button>
+                <button class="btn-chip" id="castBtn">
+                    <i class="ri-tv-line"></i> 字幕投屏
+                </button>
+            </div>
+        </div>
+
+        <!-- 音频测试面板（默认隐藏） -->
+        <div class="audio-test-panel" id="audioTestPanel">
+            <div class="audio-test-header">
+                <span>麦克风输入测试</span>
+                <button class="audio-test-close" id="audioTestClose">&times;</button>
+            </div>
+            <div class="audio-test-body">
+                <button class="audio-test-start" id="audioTestStartBtn">
+                    <i class="ri-mic-line"></i> 开始测试
+                </button>
+                <button class="audio-test-stop" id="audioTestStopBtn" disabled>
+                    <i class="ri-stop-circle-line"></i> 停止
+                </button>
+                <div class="volume-meter" id="volumeMeter">
+                    <span class="volume-label">音量检测</span>
+                    <div class="volume-bars" id="volumeBars"></div>
+                </div>
+                <div class="audio-test-status" id="audioTestStatus">点击开始测试麦克风</div>
+            </div>
+        </div>
+
+        <!-- 主体区域 -->
+        <div class="main">
+            <!-- 左侧：翻译显示区 -->
+            <div class="translate-area">
+                <div class="translate-header">
+                    <div class="dropdown" id="viewModeDropdown">
+                        <span id="viewModeLabel">双语</span>
+                        <i class="ri-arrow-down-s-line"></i>
+                        <div class="dropdown-menu" id="viewModeMenu">
+                            <div class="dropdown-item active" data-mode="bilingual">双语</div>
+                            <div class="dropdown-item" data-mode="source">原文</div>
+                            <div class="dropdown-item" data-mode="target">译文</div>
+                        </div>
+                    </div>
+                    <div class="view-mode">
+                        <span>分区对照</span>
+                        <i class="ri-arrow-down-s-line"></i>
+                    </div>
+                    <div class="font-ctrl">
+                        <button class="font-btn" id="increaseFontBtn">A<sup>+</sup></button>
+                        <button class="font-btn" id="decreaseFontBtn">A<sup>-</sup></button>
+                    </div>
+                </div>
+
+                <!-- 双语对照内容区 -->
+                <div class="bilingual-content" id="bilingualContent">
+                    <div class="empty-state" id="emptyState">
+                        <div class="empty-icon">
+                            <i class="ri-translate-2" ></i>
+                        </div>
+                        <button class="start-btn" id="startBtn">
+                            <i class="ri-mic-line"></i> 开始同传
+                        </button>
+                        <div class="audio-source" id="audioSourceBtn">
+                            <span id="audioSourceLabel">混合声源</span>
+                            <i class="ri-arrow-down-s-line"></i>
+                            <div class="audio-source-panel" id="audioSourcePanel">
+                                <div class="asp-header">
+                                    <span>输入声源</span>
+                                    <i class="ri-bar-chart-horizontal-line"></i>
+                                </div>
+                                <div class="asp-body">
+                                    <label class="asp-item" id="aspSystemItem">
+                                        <input type="checkbox" id="aspSystemAudio" checked>
+                                        <span class="asp-check"><i class="ri-check-line"></i></span>
+                                        <span class="asp-text">电脑声音 (Realtek(R) Audio)</span>
+                                    </label>
+                                    <label class="asp-item" id="aspMicItem">
+                                        <input type="checkbox" id="aspMicAudio" checked>
+                                        <span class="asp-check"><i class="ri-check-line"></i></span>
+                                        <span class="asp-text">麦克风声音</span>
+                                    </label>
+                                    <div class="asp-sub" id="aspMicSub"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 原文区域 -->
+                    <div class="source-area" id="sourceArea">
+                        <div class="source-text" id="sourceText"></div>
+                    </div>
+
+                    <!-- 译文区域 -->
+                    <div class="target-area" id="targetArea">
+                        <div class="target-text" id="targetText"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 右侧：同传笔记 -->
+            <div class="notes-area" id="notesArea">
+                <button class="notes-toggle" id="notesToggle" title="收起笔记">
+                    <i class="ri-arrow-right-s-line" id="notesToggleIcon"></i>
+                </button>
+                <div class="notes-header">
+                    <h3>同传笔记</h3>
+                    <button class="notes-action"><i class="ri-font-size"></i></button>
+                </div>
+                <textarea class="notes-textarea" placeholder="从这里输入，记录此刻同传翻译想法"></textarea>
+            </div>
+        </div>
+
+        <!-- 底部浮动控制条（录音时显示） -->
+        <div class="floating-controls" id="floatingControls">
+            <button class="fc-btn fc-pause" id="fcPauseBtn">
+                <i class="ri-pause-fill"></i>
+            </button>
+            <span class="fc-timer" id="fcTimer">00:00:00</span>
+            <div class="fc-volume-bars" id="fcVolumeBars"></div>
+            <div class="fc-source">
+                <span>混合声源</span>
+                <i class="ri-arrow-down-s-line"></i>
+            </div>
+            <button class="fc-btn fc-stop" id="fcStopBtn">
+                <i class="ri-stop-fill"></i>
+            </button>
+        </div>
+
+    </div>
+
+    <script type="module" src="./js/app.js"></script>
+</body>
+</html>
