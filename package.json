@@ -1,0 +1,13 @@
+{
+  "name": "ai-simultaneous-translation",
+  "version": "1.0.0",
+  "description": "AI 同声传译助手 - Electron 桌面应用",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron . --dev"
+  },
+  "devDependencies": {
+    "electron": "^31.7.7"
+  }
+}

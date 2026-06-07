@@ -18,6 +18,20 @@ env/
 *.swp
 *.swo
 
+# Electron 缓存
+app/
+dist/
+out/
+release/
+*.exe
+
+# Node.js 依赖
+node_modules/
+.npm-cache/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
 # 系统文件
 .DS_Store
 Thumbs.db
