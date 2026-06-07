@@ -19,7 +19,6 @@ env/
 *.swo
 
 # Electron 缓存
-app/
 dist/
 out/
 release/
