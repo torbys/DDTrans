@@ -82,9 +82,8 @@
             </div>
             <div class="toolbar-center">
                 <div class="ai-voice-wrapper" id="aiVoiceWrapper">
-                    <span class="ai-voice-hint">
+                    <span class="ai-voice-hint" id="aiVoiceHint">
                         <i class="ri-error-warning-line"></i>
-                        <span class="ai-voice-tooltip">开启AI语音后，可选择让AI阅读文本，但对应的token计费会增高<br>（输出每秒音频消耗 12.5 Token）</span>
                     </span>
                     <span class="ai-voice-label">AI语音</span>
                     <button class="ai-voice-switch" id="aiVoiceBtn" aria-pressed="false">
@@ -225,9 +224,27 @@
             <button class="fc-btn fc-audio-play" id="fcAudioPlayBtn" title="播放AI音频">
                 <i class="ri-volume-up-line"></i>
             </button>
-            <div class="fc-source">
-                <span>混合声源</span>
-                <i class="ri-arrow-down-s-line"></i>
+            <div class="fc-source" id="fcSourceBtn">
+                <span id="fcSourceLabel">混合声源</span>
+                <i class="ri-arrow-up-s-line" id="fcSourceArrow"></i>
+                <div class="fc-source-panel" id="fcSourcePanel">
+                    <div class="fc-sp-header">
+                        <span>输入声源</span>
+                        <i class="ri-bar-chart-horizontal-line"></i>
+                    </div>
+                    <div class="fc-sp-body">
+                        <label class="fc-sp-item" id="fcSpSystemItem">
+                            <input type="checkbox" id="fcSpSystemAudio" checked>
+                            <span class="fc-sp-check"><i class="ri-check-line"></i></span>
+                            <span class="fc-sp-text">电脑声音</span>
+                        </label>
+                        <label class="fc-sp-item" id="fcSpMicItem">
+                            <input type="checkbox" id="fcSpMicAudio" checked>
+                            <span class="fc-sp-check"><i class="ri-check-line"></i></span>
+                            <span class="fc-sp-text">麦克风声音</span>
+                        </label>
+                    </div>
+                </div>
             </div>
             <button class="fc-btn fc-stop" id="fcStopBtn">
                 <i class="ri-stop-fill"></i>
@@ -252,6 +269,14 @@
             </div>
         </div>
 
+    </div>
+
+    <!-- AI语音提示tooltip（全局层级，避免被其他元素遮挡） -->
+    <div class="ai-voice-tooltip" id="aiVoiceTooltip">
+        开启AI语音后，可选择让AI阅读文本，但对应的token计费会增高<br>
+        （输出每秒音频消耗 12.5 Token）<br><br>
+        <strong>以下语言暂不支持语音输出：</strong><br>
+        粤语、希腊语、南非荷兰语、阿斯图里亚斯语、白俄罗斯语、保加利亚语、孟加拉语、波斯尼亚语、加泰罗尼亚语、宿务语、爱沙尼亚语、加利西亚语、古吉拉特语、克罗地亚语、匈牙利语、爪哇语、哈萨克语、卡纳达语、柯尔克孜语、拉脱维亚语、马其顿语、马拉雅拉姆语、马拉地语、旁遮普语、罗马尼亚语、斯洛伐克语、斯洛文尼亚语、斯瓦希里语、塔吉克语、阿塞拜疆语、乌克兰语
     </div>
 
     <script type="module" src="./js/app.js"></script>

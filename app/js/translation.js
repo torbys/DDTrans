@@ -154,6 +154,21 @@ async function startTranslation() {
         // 显示浮动控制条
         dom.floatingControls.classList.add("show");
 
+        // 同步声源状态到底部控制条面板
+        if (dom.fcSpSystemAudio) dom.fcSpSystemAudio.checked = state.useSystemAudio;
+        if (dom.fcSpMicAudio) dom.fcSpMicAudio.checked = state.useMicAudio;
+        if (dom.fcSourceLabel) {
+            if (state.useSystemAudio && state.useMicAudio) {
+                dom.fcSourceLabel.textContent = "混合声源";
+            } else if (state.useSystemAudio) {
+                dom.fcSourceLabel.textContent = "电脑声音";
+            } else if (state.useMicAudio) {
+                dom.fcSourceLabel.textContent = "麦克风";
+            } else {
+                dom.fcSourceLabel.textContent = "请选择声源";
+            }
+        }
+
         // 更新会话标题
         const now = new Date();
         dom.sessionTitle.textContent = `${now.getFullYear()}年${String(now.getMonth()+1).padStart(2,'0')}月${String(now.getDate()).padStart(2,'0')}日_记录`;
@@ -288,6 +303,54 @@ export function stopTranslation() {
     dom.langSwapBtn.disabled = false;
     dom.hotwordBtn.disabled = false;
     dom.aiVoiceBtn.disabled = false;
+}
+
+/**
+ * 动态切换音频输入源（采集过程中使用）
+ */
+export async function switchAudioSource() {
+    if (!state.isRunning || !state.audioContext) return;
+
+    try {
+        console.log("[前端] 切换音频源...");
+
+        // 1. 断开旧的音频连接
+        if (state.scriptProcessor) {
+            state.scriptProcessor.disconnect();
+        }
+
+        // 2. 停止旧的音频流
+        if (state.microphoneStream) {
+            state.microphoneStream.getTracks().forEach((t) => t.stop());
+            state.setMicrophoneStream(null);
+        }
+        if (state.systemAudioStream) {
+            state.systemAudioStream.getTracks().forEach((t) => t.stop());
+            state.setSystemAudioStream(null);
+        }
+        if (state.combinedStream) {
+            state.setCombinedStream(null);
+        }
+
+        // 3. 获取新的音频流
+        const newStream = await getAudioStreamBySelection();
+        if (!newStream) {
+            throw new Error("无法获取新的音频流");
+        }
+
+        state.setMicrophoneStream(newStream);
+        console.log("[前端] 新音频流已获取");
+
+        // 4. 重新连接到 AudioContext
+        const source = state.audioContext.createMediaStreamSource(state.microphoneStream);
+        source.connect(state.scriptProcessor);
+        state.scriptProcessor.connect(state.audioContext.destination);
+
+        console.log("[前端] 音频源切换完成");
+    } catch (err) {
+        console.error("[前端] 切换音频源失败:", err);
+        setStatus("切换声源失败: " + err.message, "error");
+    }
 }
 
 function cleanup() {

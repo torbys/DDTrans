@@ -124,7 +124,7 @@ class QwenTranslator:
             log.warn("等待 session.finished 超时")
 
     async def reset_session(self):
-        """重置会话状态，用于恢复同传"""
+        """重置会话状态，用于恢复同传（仅清除状态标记，不重新初始化会话）"""
         self._session_finished.clear()
         log.info("会话状态已重置，可恢复音频输入")
 
