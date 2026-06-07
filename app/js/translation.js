@@ -184,6 +184,7 @@ async function startTranslation() {
         audioChunks = [];
         state.setAudioBlobs([]);
         state.setCurrentAudioIndex(0);
+        if (dom.aiAudioPlayBtn) dom.aiAudioPlayBtn.style.display = "none";  // 新增
         dom.fcAudioPlayBtn.style.display = "none";
         dom.fcAudioPlayBtn.innerHTML = '<i class="ri-volume-up-line"></i>';
 
@@ -209,6 +210,39 @@ async function startTranslation() {
 export function togglePause() {
     if (!state.isRunning) return;
     const newPaused = !state.isPaused;
+
+    if (newPaused) {
+        // 暂停时：有音频才显示播放按钮
+        if (state.audioBlobs.length > 0) {
+            dom.aiAudioPlayBtn.style.display = "flex";
+        }
+    } else {
+        // 恢复时：强制隐藏
+        dom.aiAudioPlayBtn.style.display = "none";
+        
+        // 如果正在播放，顺便停掉并重置图标
+        if (state.isPlayingAudio) {
+            if (state.audioSource) {
+                try { state.audioSource.stop(); } catch (e) {}
+                state.setAudioSource(null);
+            }
+            if (state.audioCtx && state.audioCtx.state !== "closed") {
+                try { state.audioCtx.close(); } catch (e) {}
+                state.setAudioCtx(null);
+            }
+            state.setIsPlayingAudio(false);
+            state.setCurrentAudioIndex(0);
+            
+            // 重置按钮图标
+            if (dom.aiAudioPlayBtn) {
+                dom.aiAudioPlayBtn.classList.remove("playing");
+                dom.aiAudioPlayBtn.innerHTML = '<i class="ri-play-fill" style="color: #000; font-size: 16px;"></i>';
+                dom.aiAudioPlayBtn.title = "播放AI音频";
+            }
+            dom.fcAudioPlayBtn.innerHTML = '<i class="ri-volume-up-line"></i>';
+            dom.fcAudioPlayBtn.classList.remove("playing");
+        }
+    }
 
     if (newPaused) {
         // 发送暂停信号给后端
@@ -278,10 +312,8 @@ export function stopTranslation() {
         }
         state.setIsPlayingAudio(false);
         state.setCurrentAudioIndex(0);
-        dom.fcAudioPlayBtn.innerHTML = '<i class="ri-volume-up-line"></i>';
-        dom.fcAudioPlayBtn.classList.remove("playing");
     }
-    dom.fcAudioPlayBtn.style.display = "none";
+    if (dom.aiAudioPlayBtn) dom.aiAudioPlayBtn.style.display = "flex";
 
     if (state.timerInterval) {
         clearInterval(state.timerInterval);
@@ -449,9 +481,8 @@ function handleServerMessage(msg) {
                 const pcmData = new Int16Array(bytes.buffer);
                 state.audioBlobs.push({ pcm: pcmData, sampleRate: 24000 });
                 audioChunks = [];
-                // 停止采集时显示播放按钮
-                if (!state.isRunning || state.isPaused) {
-                    dom.fcAudioPlayBtn.style.display = "flex";
+                if (state.isPaused && state.audioBlobs.length > 0) {
+                    if (dom.aiAudioPlayBtn) dom.aiAudioPlayBtn.style.display = "flex";
                 }
             }
             break;
@@ -460,7 +491,7 @@ function handleServerMessage(msg) {
             console.log("[前端] 千问会话段结束（暂停触发）");
             // 暂停时收到 session.finished，显示AI音频播放按钮
             if (state.isPaused && state.audioBlobs.length > 0) {
-                dom.fcAudioPlayBtn.style.display = "flex";
+                if (dom.aiAudioPlayBtn) dom.aiAudioPlayBtn.style.display = "flex";
             }
             break;
 

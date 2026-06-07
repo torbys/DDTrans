@@ -33,6 +33,9 @@ export const aiVoiceTooltip = document.getElementById("aiVoiceTooltip");
 
 // 热词配置弹窗
 export const hotwordBtn = document.getElementById("hotwordBtn");
+export const shareBtn = document.getElementById("shareBtn");
+export const shareDropdown = document.getElementById("shareDropdown");
+export const shareMenu = document.getElementById("shareMenu");
 export const hotwordModalOverlay = document.getElementById("hotwordModalOverlay");
 export const hotwordModal = document.getElementById("hotwordModal");
 export const hotwordModalClose = document.getElementById("hotwordModalClose");
@@ -96,6 +99,9 @@ export const fcSourceArrow = document.getElementById("fcSourceArrow");
 export const fcSourcePanel = document.getElementById("fcSourcePanel");
 export const fcSpSystemAudio = document.getElementById("fcSpSystemAudio");
 export const fcSpMicAudio = document.getElementById("fcSpMicAudio");
+
+// AI音频播放按钮（翻译区域顶部）
+export const aiAudioPlayBtn = document.getElementById("aiAudioPlayBtn");
 
 // 结束同传确认弹窗
 export const stopConfirmOverlay = document.getElementById("stopConfirmOverlay");

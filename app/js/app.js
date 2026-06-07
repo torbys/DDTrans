@@ -280,21 +280,26 @@ function init() {
     dom.stopConfirmOk.addEventListener("click", () => {
         dom.stopConfirmOverlay.classList.remove("show");
         translation.stopTranslation();
+        // 返回主界面
+        window.location.href = "./home.html";
     });
     dom.stopConfirmOverlay.addEventListener("click", (e) => {
         if (e.target === dom.stopConfirmOverlay) dom.stopConfirmOverlay.classList.remove("show");
     });
 
-    // AI音频播放按钮
-    dom.fcAudioPlayBtn.addEventListener("click", () => {
+    // AI音频播放按钮（翻译区域左侧）
+    function updateAiAudioBtnState() {
+        if (!dom.aiAudioPlayBtn) return;
         if (state.isPlayingAudio) {
-            // 停止播放
-            stopAudioPlayback();
+            dom.aiAudioPlayBtn.classList.add("playing");
+            dom.aiAudioPlayBtn.innerHTML = '<i class="ri-pause-fill"></i>';
+            dom.aiAudioPlayBtn.title = "停止播放";
         } else {
-            // 开始播放
-            playNextAudioBlob();
+            dom.aiAudioPlayBtn.classList.remove("playing");
+            dom.aiAudioPlayBtn.innerHTML = '<i class="ri-play-fill"></i>';
+            dom.aiAudioPlayBtn.title = "播放AI音频";
         }
-    });
+    }
 
     function stopAudioPlayback() {
         if (state.audioSource) {
@@ -306,8 +311,7 @@ function init() {
             state.setAudioCtx(null);
         }
         state.setIsPlayingAudio(false);
-        dom.fcAudioPlayBtn.innerHTML = '<i class="ri-volume-up-line"></i>';
-        dom.fcAudioPlayBtn.classList.remove("playing");
+        updateAiAudioBtnState();
     }
 
     async function playNextAudioBlob() {
@@ -355,8 +359,7 @@ function init() {
             };
 
             state.setIsPlayingAudio(true);
-            dom.fcAudioPlayBtn.innerHTML = '<i class="ri-pause-fill"></i>';
-            dom.fcAudioPlayBtn.classList.add("playing");
+            updateAiAudioBtnState();
 
             source.start(0);
         } catch (err) {
@@ -364,6 +367,16 @@ function init() {
             state.setCurrentAudioIndex(state.currentAudioIndex + 1);
             playNextAudioBlob();
         }
+    }
+
+    if (dom.aiAudioPlayBtn) {
+        dom.aiAudioPlayBtn.addEventListener("click", () => {
+            if (state.isPlayingAudio) {
+                stopAudioPlayback();
+            } else {
+                playNextAudioBlob();
+            }
+        });
     }
 
     // 生成音量格子
@@ -391,6 +404,40 @@ function init() {
             view.setViewMode(mode);
         }
     });
+
+    // 分享字幕下拉菜单
+    if (dom.shareDropdown) {
+        dom.shareDropdown.addEventListener("click", (e) => {
+            e.stopPropagation();
+            dom.shareMenu.classList.toggle("show");
+        });
+    }
+    document.addEventListener("click", () => {
+        if (dom.shareMenu) dom.shareMenu.classList.remove("show");
+    });
+    if (dom.shareMenu) {
+        dom.shareMenu.addEventListener("click", (e) => {
+            if (e.target.classList.contains("dropdown-item")) {
+                const type = e.target.dataset.share;
+                let text = "";
+                if (type === "source") {
+                    text = state.sourceSegments.join("\n");
+                } else if (type === "target") {
+                    text = state.targetSegments.join("\n");
+                }
+                if (text) {
+                    navigator.clipboard.writeText(text).then(() => {
+                        setStatus(type === "source" ? "原文已复制" : "译文已复制", "success");
+                    }).catch(() => {
+                        setStatus("复制失败", "error");
+                    });
+                } else {
+                    setStatus("暂无内容可复制", "error");
+                }
+                dom.shareMenu.classList.remove("show");
+            }
+        });
+    }
 
     // 初始化自定义语言下拉
     lang.initLangDropdown("source", dom.sourceLangDropdown, dom.sourceLangTrigger, dom.sourceLangMenu, dom.sourceLangName, dom.sourceLangNative);

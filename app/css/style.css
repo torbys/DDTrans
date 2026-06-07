@@ -350,6 +350,8 @@ body {
     display: flex;
     align-items: center;
     gap: 8px;
+    position: relative;
+    z-index: 500;
 }
 
 .btn-chip {
@@ -394,6 +396,7 @@ body {
     border-radius: 16px;
     backdrop-filter: blur(12px);
     overflow: hidden;
+    position: relative;
 }
 
 .translate-header {
@@ -480,6 +483,31 @@ body {
     font-weight: 500;
 }
 
+/* 分享字幕下拉 */
+.share-dropdown {
+    position: relative;
+    z-index: 500;
+}
+
+.share-menu {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 4px;
+    background: #fff;
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    min-width: 120px;
+    z-index: 500;
+    padding: 4px 0;
+}
+
+.share-menu.show {
+    display: block;
+}
+
 /* 双语内容区 */
 .bilingual-content {
     flex: 1;
@@ -487,6 +515,46 @@ body {
     padding: 20px;
     display: flex;
     flex-direction: column;
+}
+
+/* AI音频播放按钮（浮动在翻译区域左侧） */
+.ai-audio-play-btn {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    height: 40px;
+    border: 1px solid #d9d9d9; 
+    border-radius: 10px;
+    background: white;
+    color: #333;
+    font-size: 20px;
+    cursor: pointer;
+    position: absolute;
+    left: 20px;
+    top: 61%;
+    transform: translateY(-70%);
+    z-index: 1000;
+    flex-shrink: 0;
+    transition: all 0.2s;
+}
+
+.ai-audio-play-btn i {
+    color: #333;                       /* 统一图标颜色 */
+    font-size: 18px;
+}
+
+.ai-audio-play-btn:hover {
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+}
+
+.ai-audio-play-btn.playing {
+    background: linear-gradient(135deg, #ff4d4f 0%, #ff7875 100%);
+    box-shadow: 0 4px 12px rgba(255, 77, 79, 0.3);
+}
+
+.ai-audio-play-btn.playing:hover {
+    box-shadow: 0 6px 20px rgba(255, 77, 79, 0.4);
 }
 
 /* 左右分区布局 */

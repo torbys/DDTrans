@@ -1,12 +1,15 @@
 <!DOCTYPE html>
 <html lang="zh-CN">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI 同声传译助手</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.min.css">
+    
     <link rel="stylesheet" href="./css/style.css">
 </head>
+
 <body>
     <div class="app">
         <!-- 自定义标题栏（可拖拽） -->
@@ -95,11 +98,22 @@
                 <button class="btn-chip" id="hotwordBtn">
                     <i class="ri-bookmark-line"></i> 热词配置
                 </button>
-                <button class="btn-chip" id="shareBtn">
-                    <i class="ri-share-box-line"></i> 分享字幕
-                </button>
+                <div class="dropdown share-dropdown" id="shareDropdown">
+                    <button class="btn-chip" id="shareBtn">
+                        <i class="ri-share-box-line"></i> 分享字幕
+                    </button>
+                    <div class="dropdown-menu share-menu" id="shareMenu">
+                        <div class="dropdown-item" data-share="source">复制原文</div>
+                        <div class="dropdown-item" data-share="target">复制译文</div>
+                    </div>
+                </div>
             </div>
         </div>
+
+         <!-- AI音频播放按钮（浮动在翻译区域左侧） -->
+        <button class="ai-audio-play-btn" id="aiAudioPlayBtn" title="播放AI音频">
+            <i class="ri-play-fill"></i>
+        </button>
 
         <!-- 热词配置弹窗（默认隐藏） -->
         <div class="modal-overlay" id="hotwordModalOverlay">
@@ -155,11 +169,13 @@
                     </div>
                 </div>
 
+
+
                 <!-- 双语对照内容区 -->
                 <div class="bilingual-content" id="bilingualContent">
                     <div class="empty-state" id="emptyState">
                         <div class="empty-icon">
-                            <i class="ri-translate-2" ></i>
+                            <i class="ri-translate-2"></i>
                         </div>
                         <button class="start-btn" id="startBtn">
                             <i class="ri-mic-line"></i> 开始同传
@@ -196,6 +212,7 @@
 
                     <!-- 译文区域 -->
                     <div class="target-area" id="targetArea">
+                       
                         <div class="target-text" id="targetText"></div>
                     </div>
                 </div>
@@ -281,4 +298,5 @@
 
     <script type="module" src="./js/app.js"></script>
 </body>
+
 </html>
