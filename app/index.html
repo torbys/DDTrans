@@ -17,8 +17,7 @@
                 </button>
                 <span class="session-title" id="sessionTitle">2026年06月07日_记录_1</span>
                 <span class="tag tag-green"><i class="ri-shield-check-line"></i> 会议记录自动保存</span>
-                <span class="tag tag-green"><i class="ri-shield-check-line"></i> 数据安全保护</span>
-                <span class="tag tag-gray">翻译内容和播报声音由AI生成</span>
+                <span class="tag tag-gray">翻译内容由AI生成</span>
             </div>
             <div class="title-bar-right">
                 <span class="timer" id="timerDisplay">00:19:48</span>
@@ -38,10 +37,20 @@
         <!-- 控制栏 -->
         <div class="toolbar">
             <div class="toolbar-left">
-                <div class="dropdown" id="modelDropdown">
-                    <i class="ri-settings-3-line"></i>
-                    <span>通用模型</span>
+                <div class="dropdown model-dropdown" id="modelDropdown">
+                    <img src="../resources/icons/千问logo.png" alt="千问" class="model-logo">
+                    <span>千问大模型</span>
                     <i class="ri-arrow-down-s-line"></i>
+                    <div class="dropdown-menu model-menu" id="modelMenu">
+                        <div class="model-item active" data-model="qwen">
+                            <img src="../resources/icons/千问logo.png" alt="千问" class="model-item-logo">
+                            <div class="model-item-info">
+                                <div class="model-item-name">千问大模型</div>
+                                <div class="model-item-desc">多语种 听同传 效果佳</div>
+                            </div>
+                            <i class="ri-check-line model-check"></i>
+                        </div>
+                    </div>
                 </div>
                 <div class="lang-switch" id="langSwitch">
                     <!-- 源语言自定义下拉 -->
@@ -72,39 +81,50 @@
                 </div>
             </div>
             <div class="toolbar-center">
-                <button class="btn-chip active" id="effectBtn">
-                    <i class="ri-magic-line"></i> 效果优化
+                <div class="ai-voice-wrapper" id="aiVoiceWrapper">
+                    <span class="ai-voice-hint">
+                        <i class="ri-error-warning-line"></i>
+                        <span class="ai-voice-tooltip">开启AI语音后，可选择让AI阅读文本，但对应的token计费会增高<br>（输出每秒音频消耗 12.5 Token）</span>
+                    </span>
+                    <span class="ai-voice-label">AI语音</span>
+                    <button class="ai-voice-switch" id="aiVoiceBtn" aria-pressed="false">
+                        <span class="switch-track">
+                            <span class="switch-thumb"></span>
+                        </span>
+                    </button>
+                </div>
+                <button class="btn-chip" id="hotwordBtn">
+                    <i class="ri-bookmark-line"></i> 热词配置
                 </button>
                 <button class="btn-chip" id="shareBtn">
                     <i class="ri-share-box-line"></i> 分享字幕
                 </button>
-                <button class="btn-chip" id="audioTestBtn">
-                    <i class="ri-mic-line"></i> 麦克风测试
-                </button>
-                <button class="btn-chip" id="castBtn">
-                    <i class="ri-tv-line"></i> 字幕投屏
-                </button>
             </div>
         </div>
 
-        <!-- 音频测试面板（默认隐藏） -->
-        <div class="audio-test-panel" id="audioTestPanel">
-            <div class="audio-test-header">
-                <span>麦克风输入测试</span>
-                <button class="audio-test-close" id="audioTestClose">&times;</button>
-            </div>
-            <div class="audio-test-body">
-                <button class="audio-test-start" id="audioTestStartBtn">
-                    <i class="ri-mic-line"></i> 开始测试
-                </button>
-                <button class="audio-test-stop" id="audioTestStopBtn" disabled>
-                    <i class="ri-stop-circle-line"></i> 停止
-                </button>
-                <div class="volume-meter" id="volumeMeter">
-                    <span class="volume-label">音量检测</span>
-                    <div class="volume-bars" id="volumeBars"></div>
+        <!-- 热词配置弹窗（默认隐藏） -->
+        <div class="modal-overlay" id="hotwordModalOverlay">
+            <div class="modal hotword-modal" id="hotwordModal">
+                <div class="modal-header">
+                    <h3>热词配置</h3>
+                    <button class="modal-close" id="hotwordModalClose">&times;</button>
                 </div>
-                <div class="audio-test-status" id="audioTestStatus">点击开始测试麦克风</div>
+                <div class="modal-body">
+                    <p class="hotword-desc">输入行业专属术语或人名，可提升翻译准确率</p>
+                    <div class="hotword-header-row">
+                        <span class="hotword-header-cell">原文 - <span id="hotwordSourceLang">英语</span></span>
+                        <span class="hotword-header-cell">译文 - <span id="hotwordTargetLang">中文</span></span>
+                        <span class="hotword-header-cell hotword-header-action">操作</span>
+                    </div>
+                    <div class="hotword-list" id="hotwordList"></div>
+                    <button class="hotword-add" id="hotwordAdd">
+                        <i class="ri-add-line"></i> 添加热词
+                    </button>
+                </div>
+                <div class="modal-footer">
+                    <button class="modal-btn modal-btn-secondary" id="hotwordCancel">取消</button>
+                    <button class="modal-btn modal-btn-primary" id="hotwordConfirm">确定</button>
+                </div>
             </div>
         </div>
 
@@ -122,9 +142,13 @@
                             <div class="dropdown-item" data-mode="target">译文</div>
                         </div>
                     </div>
-                    <div class="view-mode">
-                        <span>分区对照</span>
+                    <div class="dropdown" id="layoutDropdown">
+                        <span id="layoutLabel">分区对照</span>
                         <i class="ri-arrow-down-s-line"></i>
+                        <div class="dropdown-menu" id="layoutMenu">
+                            <div class="dropdown-item active" data-layout="horizontal">上下分区</div>
+                            <div class="dropdown-item" data-layout="vertical">左右分区</div>
+                        </div>
                     </div>
                     <div class="font-ctrl">
                         <button class="font-btn" id="increaseFontBtn">A<sup>+</sup></button>
@@ -198,6 +222,9 @@
             </button>
             <span class="fc-timer" id="fcTimer">00:00:00</span>
             <div class="fc-volume-bars" id="fcVolumeBars"></div>
+            <button class="fc-btn fc-audio-play" id="fcAudioPlayBtn" title="播放AI音频">
+                <i class="ri-volume-up-line"></i>
+            </button>
             <div class="fc-source">
                 <span>混合声源</span>
                 <i class="ri-arrow-down-s-line"></i>
@@ -205,6 +232,24 @@
             <button class="fc-btn fc-stop" id="fcStopBtn">
                 <i class="ri-stop-fill"></i>
             </button>
+        </div>
+
+        <!-- 结束同传确认弹窗 -->
+        <div class="modal-overlay" id="stopConfirmOverlay">
+            <div class="modal stop-confirm-modal">
+                <div class="modal-header">
+                    <h3>结束同传</h3>
+                    <button class="modal-close" id="stopConfirmClose">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="stop-confirm-text">确定要结束此次同传？</p>
+                    <p class="stop-confirm-hint">结束后可在同传管理中查看会议记录</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="modal-btn modal-btn-secondary" id="stopConfirmCancel">取消</button>
+                    <button class="modal-btn modal-btn-primary" id="stopConfirmOk">确定</button>
+                </div>
+            </div>
         </div>
 
     </div>

@@ -51,6 +51,22 @@ export let useMicAudio = true;
 export let systemAudioStream = null;
 export let combinedStream = null;
 
+// 热词配置: [{source: "原文", target: "译文"}]
+export let hotwords = [];
+
+// AI语音开关
+export let aiVoiceEnabled = false;
+
+// 布局: horizontal(上下) | vertical(左右)
+export let currentLayout = "horizontal";
+
+// AI音频播放
+export let audioBlobs = [];          // 存储各段音频数据 {pcm: Int16Array, sampleRate}
+export let currentAudioIndex = 0;    // 当前播放索引
+export let audioCtx = null;          // Web Audio API AudioContext
+export let audioSource = null;       // AudioBufferSourceNode
+export let isPlayingAudio = false;   // 是否正在播放
+
 // ============ Setter 函数 ============
 export function setWs(val) { ws = val; }
 export function setAudioContext(val) { audioContext = val; }
@@ -83,6 +99,14 @@ export function setUseSystemAudio(val) { useSystemAudio = val; }
 export function setUseMicAudio(val) { useMicAudio = val; }
 export function setSystemAudioStream(val) { systemAudioStream = val; }
 export function setCombinedStream(val) { combinedStream = val; }
+export function setHotwords(val) { hotwords = val; }
+export function setAiVoiceEnabled(val) { aiVoiceEnabled = val; }
+export function setCurrentLayout(val) { currentLayout = val; }
+export function setAudioBlobs(val) { audioBlobs = val; }
+export function setCurrentAudioIndex(val) { currentAudioIndex = val; }
+export function setAudioCtx(val) { audioCtx = val; }
+export function setAudioSource(val) { audioSource = val; }
+export function setIsPlayingAudio(val) { isPlayingAudio = val; }
 
 // 数组操作
 export function pushSourceSegment(text) { sourceSegments.push(text); }

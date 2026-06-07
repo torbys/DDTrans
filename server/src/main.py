@@ -47,6 +47,7 @@ async def translate_websocket(client_ws: WebSocket):
     translator: QwenTranslator | None = None
     translator_task: asyncio.Task | None = None
     event_queue: asyncio.Queue = asyncio.Queue()
+    is_paused = False
 
     async def forward_to_client():
         try:
@@ -74,6 +75,7 @@ async def translate_websocket(client_ws: WebSocket):
         source_lang = config.get("source_language", "en")
         target_lang = config.get("target_language", "zh")
         audio_enabled = config.get("audio_enabled", True)
+        corpus = config.get("corpus")
 
         log.info(f"开始翻译: {source_lang} → {target_lang}, 音频={'开' if audio_enabled else '关'}")
 
@@ -82,6 +84,7 @@ async def translate_websocket(client_ws: WebSocket):
             source_language=source_lang,
             audio_enabled=audio_enabled,
             enable_asr=True,
+            corpus=corpus,
         )
 
         await translator.connect()
@@ -97,9 +100,35 @@ async def translate_websocket(client_ws: WebSocket):
         chunk_count = 0
         while True:
             try:
-                data = await client_ws.receive_bytes()
-                chunk_count += 1
-                await translator.send_audio_chunk(data)
+                msg = await client_ws.receive()
+                if msg.get("type") == "websocket.receive":
+                    data = msg.get("bytes")
+                    text = msg.get("text")
+
+                    if text:
+                        # 处理控制消息
+                        try:
+                            ctrl = json.loads(text)
+                            ctrl_type = ctrl.get("type")
+                            if ctrl_type == "pause":
+                                log.info("收到暂停信号，发送 session.finish")
+                                is_paused = True
+                                await translator.finish_session()
+                                await client_ws.send_json({"type": "paused"})
+                                continue
+                            elif ctrl_type == "resume":
+                                log.info("收到恢复信号，重置会话状态")
+                                is_paused = False
+                                await translator.reset_session()
+                                await client_ws.send_json({"type": "resumed"})
+                                continue
+                        except Exception:
+                            pass
+
+                    if data and not is_paused:
+                        chunk_count += 1
+                        await translator.send_audio_chunk(data)
+
             except WebSocketDisconnect:
                 log.info(f"浏览器断开连接 (共接收 {chunk_count} 个音频块)")
                 break

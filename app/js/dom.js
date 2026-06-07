@@ -25,14 +25,28 @@ export let statusText = null;
 export let audioLevelEl = null;
 export let connectionStatusEl = null;
 
-// 音频测试面板
-export const audioTestBtn = document.getElementById("audioTestBtn");
-export const audioTestPanel = document.getElementById("audioTestPanel");
-export const audioTestClose = document.getElementById("audioTestClose");
-export const audioTestStartBtn = document.getElementById("audioTestStartBtn");
-export const audioTestStopBtn = document.getElementById("audioTestStopBtn");
-export const audioTestStatus = document.getElementById("audioTestStatus");
-export const volumeBars = document.getElementById("volumeBars");
+// AI语音
+export const aiVoiceBtn = document.getElementById("aiVoiceBtn");
+export const aiVoiceWrapper = document.getElementById("aiVoiceWrapper");
+
+// 热词配置弹窗
+export const hotwordBtn = document.getElementById("hotwordBtn");
+export const hotwordModalOverlay = document.getElementById("hotwordModalOverlay");
+export const hotwordModal = document.getElementById("hotwordModal");
+export const hotwordModalClose = document.getElementById("hotwordModalClose");
+export const hotwordCancel = document.getElementById("hotwordCancel");
+export const hotwordConfirm = document.getElementById("hotwordConfirm");
+export const hotwordList = document.getElementById("hotwordList");
+export const hotwordAdd = document.getElementById("hotwordAdd");
+
+// 布局分区
+export const layoutDropdown = document.getElementById("layoutDropdown");
+export const layoutMenu = document.getElementById("layoutMenu");
+export const layoutLabel = document.getElementById("layoutLabel");
+
+// 模型选择
+export const modelDropdown = document.getElementById("modelDropdown");
+export const modelMenu = document.getElementById("modelMenu");
 
 // 字号控制
 export const increaseFontBtn = document.getElementById("increaseFontBtn");
@@ -71,8 +85,15 @@ export const aspMicSub = document.getElementById("aspMicSub");
 export const floatingControls = document.getElementById("floatingControls");
 export const fcPauseBtn = document.getElementById("fcPauseBtn");
 export const fcStopBtn = document.getElementById("fcStopBtn");
+export const fcAudioPlayBtn = document.getElementById("fcAudioPlayBtn");
 export const fcTimer = document.getElementById("fcTimer");
 export const fcVolumeBars = document.getElementById("fcVolumeBars");
+
+// 结束同传确认弹窗
+export const stopConfirmOverlay = document.getElementById("stopConfirmOverlay");
+export const stopConfirmClose = document.getElementById("stopConfirmClose");
+export const stopConfirmCancel = document.getElementById("stopConfirmCancel");
+export const stopConfirmOk = document.getElementById("stopConfirmOk");
 
 // 笔记区域
 export const notesArea = document.getElementById("notesArea");
