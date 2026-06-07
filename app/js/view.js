@@ -59,3 +59,27 @@ export function updateFontSize() {
     dom.sourceText.style.fontSize = `${state.currentFontSize}px`;
     dom.targetText.style.fontSize = `${state.currentFontSize}px`;
 }
+
+export function setLayout(layout) {
+    state.setCurrentLayout(layout);
+
+    // 更新下拉菜单显示
+    dom.layoutLabel.textContent = layout === "horizontal" ? "上下分区" : "左右分区";
+    dom.layoutMenu.querySelectorAll(".dropdown-item").forEach((item) => {
+        item.classList.toggle("active", item.dataset.layout === layout);
+    });
+
+    // 应用布局
+    applyLayout();
+}
+
+export function applyLayout() {
+    const content = dom.bilingualContent;
+    content.classList.remove("layout-horizontal", "layout-vertical");
+
+    if (state.currentLayout === "vertical") {
+        content.classList.add("layout-vertical");
+    } else {
+        content.classList.add("layout-horizontal");
+    }
+}

@@ -11,6 +11,9 @@ import { TARGET_SAMPLE_RATE, BUFFER_SIZE } from './config.js';
 import { setStatus, resample, float32ToInt16, updateVolumeBars } from './utils.js';
 import { getAudioStreamBySelection } from './audio-capture.js';
 
+// 音频播放队列
+let audioChunks = [];
+
 export async function toggleTranslation() {
     if (state.isRunning) {
         stopTranslation();
@@ -36,9 +39,11 @@ async function startTranslation() {
         dom.startBtn.disabled = true;
         dom.startBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> 启动中...';
 
-        // 同传过程中禁用语言选择和交换按钮
+        // 同传过程中禁用语言选择、交换按钮、热词和AI语音
         lang.setLangDropdownDisabled(true);
         dom.langSwapBtn.disabled = true;
+        dom.hotwordBtn.disabled = true;
+        dom.aiVoiceBtn.disabled = true;
 
         // 1. 获取音频流（根据用户选择）
         const finalStream = await getAudioStreamBySelection();
@@ -75,8 +80,22 @@ async function startTranslation() {
                 type: "start",
                 source_language: state.currentSourceLang,
                 target_language: state.currentTargetLang,
-                audio_enabled: false, // 不请求语音输出
+                audio_enabled: state.aiVoiceEnabled,
             };
+
+            // 添加热词配置
+            if (state.hotwords && state.hotwords.length > 0) {
+                const phrases = {};
+                state.hotwords.forEach((hw) => {
+                    if (hw.source && hw.target) {
+                        phrases[hw.source] = hw.target;
+                    }
+                });
+                if (Object.keys(phrases).length > 0) {
+                    config.corpus = { phrases };
+                }
+            }
+
             console.log("[前端] 发送配置:", JSON.stringify(config, null, 2));
             state.ws.send(JSON.stringify(config));
         };
@@ -99,7 +118,13 @@ async function startTranslation() {
 
         // 5. ScriptProcessor.onaudioprocess - 音频采集 + 重采样 + 发送
         state.scriptProcessor.onaudioprocess = (event) => {
-            if (!state.isRunning || state.isPaused || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+            if (!state.isRunning || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+            // 注意：暂停时仍然采集但不发送，保持音频上下文活跃
+            if (state.isPaused) {
+                // 暂停时只更新音量指示（显示为0）
+                updateVolumeBars(0, dom.fcVolumeBars);
+                return;
+            }
 
             const inputData = event.inputBuffer.getChannelData(0); // Float32Array
             const inputSampleRate = state.audioContext.sampleRate;
@@ -140,6 +165,13 @@ async function startTranslation() {
         dom.startBtn.style.background = "#ff4d4f";
         setStatus("翻译中...", "active");
 
+        // 重置AI音频
+        audioChunks = [];
+        state.setAudioBlobs([]);
+        state.setCurrentAudioIndex(0);
+        dom.fcAudioPlayBtn.style.display = "none";
+        dom.fcAudioPlayBtn.innerHTML = '<i class="ri-volume-up-line"></i>';
+
         // 启动计时器
         state.setStartTime(Date.now());
         state.setTotalPaused(0);
@@ -161,21 +193,46 @@ async function startTranslation() {
 
 export function togglePause() {
     if (!state.isRunning) return;
-    state.setIsPaused(!state.isPaused);
+    const newPaused = !state.isPaused;
 
-    if (state.isPaused) {
+    if (newPaused) {
+        // 发送暂停信号给后端
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            state.ws.send(JSON.stringify({ type: "pause" }));
+        }
         state.setPausedTime(Date.now());
         dom.fcPauseBtn.classList.add("paused");
         dom.fcPauseBtn.innerHTML = '<i class="ri-play-fill"></i>';
         setStatus("已暂停", "paused");
-        console.log("[前端] 暂停音频输入");
+        console.log("[前端] 发送暂停信号");
     } else {
+        // 发送恢复信号给后端
+        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
+            state.ws.send(JSON.stringify({ type: "resume" }));
+        }
         state.setTotalPaused(state.totalPaused + Date.now() - state.pausedTime);
         dom.fcPauseBtn.classList.remove("paused");
         dom.fcPauseBtn.innerHTML = '<i class="ri-pause-fill"></i>';
         setStatus("翻译中...", "active");
-        console.log("[前端] 恢复音频输入");
+        console.log("[前端] 发送恢复信号");
+        // 恢复采集时停止AI音频播放并隐藏播放按钮
+        if (state.isPlayingAudio) {
+            if (state.audioSource) {
+                try { state.audioSource.stop(); } catch (e) {}
+                state.setAudioSource(null);
+            }
+            if (state.audioCtx && state.audioCtx.state !== "closed") {
+                try { state.audioCtx.close(); } catch (e) {}
+                state.setAudioCtx(null);
+            }
+            state.setIsPlayingAudio(false);
+            state.setCurrentAudioIndex(0);
+            dom.fcAudioPlayBtn.innerHTML = '<i class="ri-volume-up-line"></i>';
+            dom.fcAudioPlayBtn.classList.remove("playing");
+        }
+        dom.fcAudioPlayBtn.style.display = "none";
     }
+    state.setIsPaused(newPaused);
 }
 
 export function stopTranslation() {
@@ -194,6 +251,23 @@ export function stopTranslation() {
     dom.fcPauseBtn.classList.remove("paused");
     dom.fcPauseBtn.innerHTML = '<i class="ri-pause-fill"></i>';
 
+    // 停止AI音频播放
+    if (state.isPlayingAudio) {
+        if (state.audioSource) {
+            try { state.audioSource.stop(); } catch (e) {}
+            state.setAudioSource(null);
+        }
+        if (state.audioCtx && state.audioCtx.state !== "closed") {
+            try { state.audioCtx.close(); } catch (e) {}
+            state.setAudioCtx(null);
+        }
+        state.setIsPlayingAudio(false);
+        state.setCurrentAudioIndex(0);
+        dom.fcAudioPlayBtn.innerHTML = '<i class="ri-volume-up-line"></i>';
+        dom.fcAudioPlayBtn.classList.remove("playing");
+    }
+    dom.fcAudioPlayBtn.style.display = "none";
+
     if (state.timerInterval) {
         clearInterval(state.timerInterval);
         state.setTimerInterval(null);
@@ -209,9 +283,11 @@ export function stopTranslation() {
     // 清空文本内容
     renderer.clearText();
 
-    // 同传结束后恢复语言选择和交换按钮
+    // 同传结束后恢复语言选择、交换按钮、热词和AI语音
     lang.setLangDropdownDisabled(false);
     dom.langSwapBtn.disabled = false;
+    dom.hotwordBtn.disabled = false;
+    dom.aiVoiceBtn.disabled = false;
 }
 
 function cleanup() {
@@ -289,6 +365,48 @@ function handleServerMessage(msg) {
             if (msg.text && state.currentTargetSegment) {
                 renderer.finalizeTargetSegment(msg.text);
             }
+            break;
+
+        case "audio_delta":
+            // 收集音频数据
+            if (msg.audio) {
+                audioChunks.push(msg.audio);
+            }
+            break;
+
+        case "audio_done":
+            // 一段音频完成，合并为PCM Int16Array数据
+            if (audioChunks.length > 0) {
+                const binary = atob(audioChunks.join(""));
+                const bytes = new Uint8Array(binary.length);
+                for (let i = 0; i < binary.length; i++) {
+                    bytes[i] = binary.charCodeAt(i);
+                }
+                // 直接存储Int16Array，采样率24000Hz（千问输出音频格式）
+                const pcmData = new Int16Array(bytes.buffer);
+                state.audioBlobs.push({ pcm: pcmData, sampleRate: 24000 });
+                audioChunks = [];
+                // 停止采集时显示播放按钮
+                if (!state.isRunning || state.isPaused) {
+                    dom.fcAudioPlayBtn.style.display = "flex";
+                }
+            }
+            break;
+
+        case "session_finished":
+            console.log("[前端] 千问会话段结束（暂停触发）");
+            // 暂停时收到 session.finished，显示AI音频播放按钮
+            if (state.isPaused && state.audioBlobs.length > 0) {
+                dom.fcAudioPlayBtn.style.display = "flex";
+            }
+            break;
+
+        case "paused":
+            console.log("[前端] 后端确认已暂停");
+            break;
+
+        case "resumed":
+            console.log("[前端] 后端确认已恢复");
             break;
 
         case "session_end":

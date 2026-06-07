@@ -24,6 +24,7 @@ class QwenTranslator:
         source_language: str = "en",
         audio_enabled: bool = True,
         enable_asr: bool = True,
+        corpus: dict = None,
     ):
         if not DASHSCOPE_API_KEY:
             raise ValueError("DASHSCOPE_API_KEY 未设置，请检查 .env 文件")
@@ -33,6 +34,7 @@ class QwenTranslator:
         self.source_language = source_language
         self.audio_enabled = audio_enabled
         self.enable_asr = enable_asr
+        self.corpus = corpus
         self.ws: Optional[websockets.WebSocketClientProtocol] = None
         self._session_ready = asyncio.Event()
         self._session_finished = asyncio.Event()
@@ -49,7 +51,7 @@ class QwenTranslator:
 
     async def configure_session(self):
         """配置翻译会话参数"""
-        modalities = ["text"]  # 只请求文本输出，不请求音频
+        modalities = ["text", "audio"] if self.audio_enabled else ["text"]
 
         session_config = {
             "modalities": modalities,
@@ -59,6 +61,10 @@ class QwenTranslator:
                 "language": self.target_language,
             },
         }
+
+        # 添加热词配置
+        if self.corpus and self.corpus.get("phrases"):
+            session_config["translation"]["corpus"] = self.corpus
 
         if self.enable_asr:
             session_config["input_audio_transcription"] = {
@@ -117,6 +123,11 @@ class QwenTranslator:
         except asyncio.TimeoutError:
             log.warn("等待 session.finished 超时")
 
+    async def reset_session(self):
+        """重置会话状态，用于恢复同传"""
+        self._session_finished.clear()
+        log.info("会话状态已重置，可恢复音频输入")
+
     async def receive_events(self, on_event: Callable):
         """循环接收服务端事件，通过回调函数分发"""
         try:
@@ -129,8 +140,8 @@ class QwenTranslator:
 
                 if event_type == "session.finished":
                     self._session_finished.set()
-                    await on_event({"type": "session_end"})
-                    break
+                    await on_event({"type": "session_finished"})
+                    # 注意：不 break，保持连接继续监听
 
                 elif event_type == "input_audio_buffer.speech_started":
                     await on_event({"type": "speech_started"})
@@ -180,6 +191,25 @@ class QwenTranslator:
                             "text": text,
                         })
 
+                elif event_type == "response.audio_transcript.text":
+                    # 包含音频输出时的翻译文本流式返回
+                    confirmed = event.get("text", "")
+                    stash = event.get("stash", "")
+                    await on_event({
+                        "type": "translation_delta",
+                        "confirmed": confirmed,
+                        "stash": stash,
+                    })
+
+                elif event_type == "response.audio_transcript.done":
+                    # 包含音频输出时的翻译文本完成
+                    text = event.get("transcript", "")
+                    if text:
+                        await on_event({
+                            "type": "translation_final",
+                            "text": text,
+                        })
+
                 elif event_type == "response.audio.delta":
                     audio_b64 = event.get("delta", "")
                     if audio_b64:
@@ -187,6 +217,11 @@ class QwenTranslator:
                             "type": "audio_delta",
                             "audio": audio_b64,
                         })
+
+                elif event_type == "response.audio.done":
+                    await on_event({
+                        "type": "audio_done",
+                    })
 
                 elif event_type == "response.done":
                     # 提取最终翻译文本

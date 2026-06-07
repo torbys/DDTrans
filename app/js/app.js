@@ -44,21 +44,212 @@ function init() {
     // 开始/停止按钮
     dom.startBtn.addEventListener("click", translation.toggleTranslation);
 
-    // 音频测试面板
-    dom.audioTestBtn.addEventListener("click", audioTest.toggleAudioTestPanel);
-    dom.audioTestClose.addEventListener("click", () => {
-        dom.audioTestPanel.classList.remove("show");
-        audioTest.stopAudioTest();
+    // AI语音切换
+    dom.aiVoiceBtn.addEventListener("click", () => {
+        const enabled = !state.aiVoiceEnabled;
+        state.setAiVoiceEnabled(enabled);
+        dom.aiVoiceBtn.setAttribute("aria-pressed", enabled);
     });
-    dom.audioTestStartBtn.addEventListener("click", audioTest.startAudioTest);
-    dom.audioTestStopBtn.addEventListener("click", audioTest.stopAudioTest);
+
+    // 热词配置弹窗
+    function openHotwordModal() {
+        dom.hotwordModalOverlay.classList.add("show");
+        // 更新列标题语言显示
+        const sourceLangName = dom.sourceLangName.textContent || "英语";
+        const targetLangName = dom.targetLangName.textContent || "中文";
+        const hotwordSourceLang = document.getElementById("hotwordSourceLang");
+        const hotwordTargetLang = document.getElementById("hotwordTargetLang");
+        if (hotwordSourceLang) hotwordSourceLang.textContent = sourceLangName;
+        if (hotwordTargetLang) hotwordTargetLang.textContent = targetLangName;
+        renderHotwordList();
+    }
+    function closeHotwordModal() {
+        dom.hotwordModalOverlay.classList.remove("show");
+    }
+    function renderHotwordList() {
+        dom.hotwordList.innerHTML = "";
+        state.hotwords.forEach((hw, index) => {
+            const row = document.createElement("div");
+            row.className = "hotword-row";
+            row.innerHTML = `
+                <input type="text" class="hotword-input" placeholder="原文" value="${hw.source || ''}">
+                <input type="text" class="hotword-input" placeholder="译文" value="${hw.target || ''}">
+                <button class="hotword-delete" data-index="${index}" title="删除">
+                    <i class="ri-delete-bin-line"></i>
+                </button>
+            `;
+            row.querySelector(".hotword-delete").addEventListener("click", () => {
+                state.hotwords.splice(index, 1);
+                renderHotwordList();
+            });
+            dom.hotwordList.appendChild(row);
+        });
+    }
+    dom.hotwordBtn.addEventListener("click", openHotwordModal);
+    dom.hotwordModalClose.addEventListener("click", closeHotwordModal);
+    dom.hotwordCancel.addEventListener("click", closeHotwordModal);
+    dom.hotwordConfirm.addEventListener("click", () => {
+        const rows = dom.hotwordList.querySelectorAll(".hotword-row");
+        const words = [];
+        rows.forEach((row) => {
+            const inputs = row.querySelectorAll(".hotword-input");
+            const source = inputs[0].value.trim();
+            const target = inputs[1].value.trim();
+            if (source && target) {
+                words.push({ source, target });
+            }
+        });
+        state.setHotwords(words);
+        closeHotwordModal();
+    });
+    dom.hotwordAdd.addEventListener("click", () => {
+        const row = document.createElement("div");
+        row.className = "hotword-row";
+        row.innerHTML = `
+            <input type="text" class="hotword-input" placeholder="原文">
+            <input type="text" class="hotword-input" placeholder="译文">
+            <button class="hotword-delete" title="删除">
+                <i class="ri-delete-bin-line"></i>
+            </button>
+        `;
+        row.querySelector(".hotword-delete").addEventListener("click", () => {
+            row.remove();
+        });
+        dom.hotwordList.appendChild(row);
+    });
+    dom.hotwordModalOverlay.addEventListener("click", (e) => {
+        if (e.target === dom.hotwordModalOverlay) closeHotwordModal();
+    });
+
+    // 布局分区下拉
+    dom.layoutDropdown.addEventListener("click", (e) => {
+        e.stopPropagation();
+        dom.layoutMenu.classList.toggle("show");
+    });
+    document.addEventListener("click", () => {
+        dom.layoutMenu.classList.remove("show");
+    });
+    dom.layoutMenu.addEventListener("click", (e) => {
+        if (e.target.classList.contains("dropdown-item")) {
+            const layout = e.target.dataset.layout;
+            view.setLayout(layout);
+        }
+    });
+
+    // 模型选择下拉
+    dom.modelDropdown.addEventListener("click", (e) => {
+        e.stopPropagation();
+        dom.modelMenu.classList.toggle("show");
+    });
+    document.addEventListener("click", () => {
+        dom.modelMenu.classList.remove("show");
+    });
 
     // 浮动控制条
     dom.fcPauseBtn.addEventListener("click", translation.togglePause);
-    dom.fcStopBtn.addEventListener("click", translation.stopTranslation);
+
+    // 停止按钮打开确认弹窗
+    dom.fcStopBtn.addEventListener("click", () => {
+        dom.stopConfirmOverlay.classList.add("show");
+    });
+
+    // 结束同传确认弹窗
+    dom.stopConfirmClose.addEventListener("click", () => {
+        dom.stopConfirmOverlay.classList.remove("show");
+    });
+    dom.stopConfirmCancel.addEventListener("click", () => {
+        dom.stopConfirmOverlay.classList.remove("show");
+    });
+    dom.stopConfirmOk.addEventListener("click", () => {
+        dom.stopConfirmOverlay.classList.remove("show");
+        translation.stopTranslation();
+    });
+    dom.stopConfirmOverlay.addEventListener("click", (e) => {
+        if (e.target === dom.stopConfirmOverlay) dom.stopConfirmOverlay.classList.remove("show");
+    });
+
+    // AI音频播放按钮
+    dom.fcAudioPlayBtn.addEventListener("click", () => {
+        if (state.isPlayingAudio) {
+            // 停止播放
+            stopAudioPlayback();
+        } else {
+            // 开始播放
+            playNextAudioBlob();
+        }
+    });
+
+    function stopAudioPlayback() {
+        if (state.audioSource) {
+            try { state.audioSource.stop(); } catch (e) {}
+            state.setAudioSource(null);
+        }
+        if (state.audioCtx && state.audioCtx.state !== "closed") {
+            try { state.audioCtx.close(); } catch (e) {}
+            state.setAudioCtx(null);
+        }
+        state.setIsPlayingAudio(false);
+        dom.fcAudioPlayBtn.innerHTML = '<i class="ri-volume-up-line"></i>';
+        dom.fcAudioPlayBtn.classList.remove("playing");
+    }
+
+    async function playNextAudioBlob() {
+        if (state.currentAudioIndex >= state.audioBlobs.length) {
+            // 全部播放完毕
+            stopAudioPlayback();
+            state.setCurrentAudioIndex(0);
+            return;
+        }
+
+        const audioData = state.audioBlobs[state.currentAudioIndex];
+        if (!audioData || !audioData.pcm) {
+            state.setCurrentAudioIndex(state.currentAudioIndex + 1);
+            playNextAudioBlob();
+            return;
+        }
+
+        try {
+            // 创建离线音频上下文解码PCM数据
+            const sampleRate = audioData.sampleRate || 24000;
+            const numChannels = 1;
+            const pcmData = audioData.pcm;
+            const length = pcmData.length;
+
+            // 创建AudioBuffer
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            state.setAudioCtx(audioCtx);
+            const audioBuffer = audioCtx.createBuffer(numChannels, length, sampleRate);
+            const channelData = audioBuffer.getChannelData(0);
+
+            // Int16 -> Float32 (-1.0 ~ 1.0)
+            for (let i = 0; i < length; i++) {
+                channelData[i] = pcmData[i] / 32768.0;
+            }
+
+            // 创建BufferSource并播放
+            const source = audioCtx.createBufferSource();
+            state.setAudioSource(source);
+            source.buffer = audioBuffer;
+            source.connect(audioCtx.destination);
+
+            source.onended = () => {
+                state.setCurrentAudioIndex(state.currentAudioIndex + 1);
+                playNextAudioBlob();
+            };
+
+            state.setIsPlayingAudio(true);
+            dom.fcAudioPlayBtn.innerHTML = '<i class="ri-pause-fill"></i>';
+            dom.fcAudioPlayBtn.classList.add("playing");
+
+            source.start(0);
+        } catch (err) {
+            console.error("[前端] 音频播放失败:", err);
+            state.setCurrentAudioIndex(state.currentAudioIndex + 1);
+            playNextAudioBlob();
+        }
+    }
 
     // 生成音量格子
-    buildVolumeBars(dom.volumeBars, 30, "vol-bar");
     buildVolumeBars(dom.fcVolumeBars, 20, "fc-vol-bar");
 
     // 隐藏翻译区域
