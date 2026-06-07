@@ -4,7 +4,7 @@ import os
 from dotenv import load_dotenv
 
 # 加载项目根目录的 .env 文件
-load_dotenv(os.path.join(os.path.dirname(__file__), "..", ".env"))
+load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
 
 # 千问 API 配置
 DASHSCOPE_API_KEY = os.getenv("DASHSCOPE_API_KEY", "")
