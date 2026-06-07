@@ -15,6 +15,32 @@ import { buildVolumeBars } from './utils.js';
 
 // ============ 初始化 ============
 function init() {
+    // 解析 URL 参数
+    const urlParams = new URLSearchParams(window.location.search);
+    const meetingName = urlParams.get("name");
+    const sourceLangParam = urlParams.get("sourceLang");
+    const targetLangParam = urlParams.get("targetLang");
+    const audioDeviceParam = urlParams.get("audioDevice");
+
+    // 应用会议名称
+    if (meetingName) {
+        dom.sessionTitle.textContent = meetingName;
+    }
+
+    // 应用语言设置
+    if (sourceLangParam) {
+        state.setCurrentSourceLang(sourceLangParam);
+    }
+    if (targetLangParam) {
+        state.setCurrentTargetLang(targetLangParam);
+    }
+    lang.updateLangDisplay();
+
+    // 应用音频设备设置
+    if (audioDeviceParam) {
+        state.setSelectedMicDeviceId(audioDeviceParam);
+    }
+
     // 开始/停止按钮
     dom.startBtn.addEventListener("click", translation.toggleTranslation);
 
@@ -104,9 +130,9 @@ function init() {
         dom.notesToggleIcon.className = isCollapsed ? "ri-arrow-left-s-line" : "ri-arrow-right-s-line";
     });
 
-    // 返回主页按钮（暂留）
+    // 返回主页按钮
     dom.homeBtn.addEventListener("click", () => {
-        console.log("返回主页（功能暂留）");
+        window.location.href = "./home.html";
     });
 }
 
