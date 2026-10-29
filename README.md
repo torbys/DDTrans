@@ -8,6 +8,12 @@
 
 ![Qwen 3.8 真实联调完成后的界面](docs/images/realtime-3.8-verified.png)
 
+## 自有虚拟麦克风开发版
+
+Windows 11 x64 的自有驱动源码、构建脚本和原生收音探针已加入仓库。设置页新增“发言翻译”，可独立保存发给对方的默认语言，源语言自动识别；检测到 DDTrans 播放/录音端点后自动配对，默认只发送译音。
+
+当前已完成离线编译与缓冲测试，开发驱动尚未在本机安装或加载。端点安装前，会议/游戏的麦克风列表不会出现 DDTrans Virtual Microphone。构建不需要重启；测试签名环境和设备加载需单独安排，脚本不会修改启动配置或自动重启。具体命令、开发包与验收边界见 [自有虚拟麦克风开发记录](docs/virtual-microphone-development-2026-10-29.md)。
+
 ## 安装与启动
 
 开发环境需要 Node.js `>=24.13.0` 和 npm；从仓库根目录执行：
@@ -126,7 +132,7 @@ data/
 npm test
 ```
 
-2026 年 10 月 29 日最终回归：**39/39 自动化测试通过**，`verify:desktop`、`verify:overlay`、`verify:audio-routing`、`verify:capture`、`verify:loopback` 均通过。音频路由专项包含真实 Web Audio 混音、Windows 回环和显式所选播放设备输出；本机无虚拟设备，外部会议的虚拟输入尚未实测。`npm test` 使用临时数据库和本地网络替身，不需要真实 Key，不连接模型，也不打开正式 `data/translation.db`。专项验证实际使用本机音频设备，证据写入独立测试目录。
+2026 年 10 月 29 日最终回归：**84/84 自动化测试通过**，`verify:desktop`、`verify:overlay`、`verify:audio-routing`、`verify:capture`、`verify:loopback` 均通过。音频路由专项包含真实 Web Audio 混音、Windows 回环和显式所选播放设备输出；本机无虚拟设备，外部会议的虚拟输入尚未实测。`npm test` 使用临时数据库和本地网络替身，不需要真实 Key，不连接模型，也不打开正式 `data/translation.db`。专项验证实际使用本机音频设备，证据写入独立测试目录。
 
 | 证据 | 内容 |
 | --- | --- |
@@ -141,6 +147,8 @@ npm test
 | `data/probes/audio-routing-verification.json` | 48 kHz 真实混音、显式所选设备/回环数值、增益比例、限幅计数、断开静音、设置保存验证 |
 | `docs/audio-routing-implementation-2026-10-29.md` | 混音总线、设置保存、虚拟设备边界和本轮验证结果 |
 | `docs/virtual-microphone-production-plan-2026-10-29.md` | 系统可枚举虚拟麦克风的实现、主线判断和制作计划 |
+| `docs/virtual-microphone-development-2026-10-29.md` | 自有驱动构建、发言翻译设置、开发包与未加载边界 |
+| `data/probes/virtual-microphone-development.json` | 驱动构建/缓冲/INF、应用回归、开发包哈希和安装前状态 |
 | `data/probes/migration-check.json` | 原库副本的迁移、逐列数据保留和完整性检查 |
 | `data/probes/production-startup.json` | 正式旧库自动备份与迁移完成，原有字段逐列保留 |
 | `docs/images/realtime-3.8-verified.png` | 真实 Electron 联调截图 |

@@ -1,5 +1,6 @@
 import { LANG_DATA } from './config.js';
-import { normalizeAudioRouting } from './audio-routing-config.js';
+import { normalizeAudioRouting, OUTGOING_LANGUAGES } from './audio-routing-config.js';
+import { resolveDDTransVirtualPair, resolveOutgoingMicrophone } from './audio-mix-bus.js';
 
 const api = window.electronAPI;
 const byId = id => document.getElementById(id);
@@ -8,9 +9,12 @@ const checks = ['ttsEnabled', 'monitorEnabled', 'virtualOutputEnabled'];
 const selects = { monitorDevice: 'monitorDeviceId', virtualRenderDevice: 'virtualRenderDeviceId', virtualCaptureDevice: 'virtualCaptureDeviceId' };
 let settings = normalizeAudioRouting(api?.audioSettings), snapshot = {}, devices = { inputs: [], outputs: [], virtualInputs: [], virtualOutputs: [] };
 let pending = {}, sending = {}, saving, saveTimer, devicesLoaded = false, failedSave = false;
+let outgoingPending = false;
 const values = () => ({ ...settings, ...sending, ...pending });
 const percent = value => `${Math.round(value * 100)}%`;
 const busy = () => ['starting', 'pausing', 'stopping'].includes(snapshot.phase);
+const sessionActive = () => ['starting', 'running', 'pausing', 'paused', 'stopping'].includes(snapshot.phase);
+const outgoingActive = () => sessionActive() && snapshot.config?.mode === 'outgoing';
 
 function status(id, message, error = false) { const node = byId(id); node.textContent = message; node.dataset.error = String(error); }
 function saveStatus(message, error = false) { failedSave = error; status('saveStatus', message, error); }
@@ -46,9 +50,43 @@ function renderControls() {
     byId('mixOriginalPreview').textContent = percent(value.originalGain);
     byId('mixTranslatedPreview').textContent = percent(value.ttsEnabled ? value.translatedGain * value.ttsVolume : 0);
     byId('targetLanguage').value = snapshot.config?.targetLanguage || 'zh';
-    byId('targetLanguage').disabled = busy();
+    byId('targetLanguage').disabled = busy() || outgoingActive();
+    if (document.activeElement !== byId('outgoingTargetLanguage')) byId('outgoingTargetLanguage').value = value.outgoingTargetLanguage;
+    for (const id of ['virtualOutputEnabled', 'virtualRenderDevice', 'virtualCaptureDevice']) byId(id).disabled = outgoingActive();
     byId('monitorVolume').disabled = !value.monitorEnabled;
     byId('monitorMode').disabled = !value.monitorEnabled;
+}
+function renderOutgoing() {
+    const pair = resolveDDTransVirtualPair(devices);
+    const ownSession = outgoingActive();
+    const source = resolveOutgoingMicrophone(devices, ownSession ? snapshot.config.deviceId : 'default');
+    let state = 'idle', label = '正在读取', detail = '正在检查 DDTrans 音频设备。';
+    if (devicesLoaded) {
+        if (sessionActive() && !ownSession) {
+            state = 'warning'; label = '请先结束当前同传';
+            detail = '当前正在进行其他同传。请先在同传页面停止并保存，再开始发言翻译。';
+        } else if (!pair.available) { state = 'warning'; label = '设备不可用'; detail = pair.message; }
+        else if (!source.available) { state = 'warning'; label = '需要真实麦克风'; detail = source.message; }
+        else if (ownSession) {
+            const ready = snapshot.audioRouting?.virtualOutputReady;
+            state = snapshot.phase === 'running' && ready ? 'outputting' : 'warning';
+            label = snapshot.phase === 'paused' ? '已暂停' : busy() ? '正在处理' : ready ? '正在发送' : '输出未就绪';
+            const language = LANG_DATA.find(item => item.code === snapshot.config.targetLanguage)?.name || snapshot.config.targetLanguage;
+            detail = snapshot.phase === 'paused' ? '发言翻译已暂停。设备恢复后可继续，也可以停止并保存。' : `本次发送语言：${language}。请在会议或游戏中选择 DDTrans Virtual Microphone。`;
+            if (snapshot.audioRouting?.virtualError) detail = snapshot.audioRouting.virtualError;
+        } else { state = 'ready'; label = '设备就绪'; detail = '两个 DDTrans 音频端点已找到，开始时会自动配对。'; }
+    }
+    byId('outgoingStatus').textContent = label;
+    byId('outgoingStatus').dataset.state = state;
+    byId('outgoingStatus').dataset.deviceState = devicesLoaded ? pair.status : 'loading';
+    status('outgoingStatusDetail', detail, state === 'error');
+    byId('outgoingMicrophone').textContent = source.available ? source.microphone.label : '没有可用的真实麦克风';
+    byId('outgoingMicrophone').dataset.deviceId = source.available ? source.microphone.deviceId : '';
+    const start = byId('startOutgoingBtn');
+    start.textContent = ownSession && snapshot.phase === 'paused' ? '继续发言翻译' : ownSession ? '发言翻译中' : '开始发言翻译';
+    start.disabled = outgoingPending || busy() || !devicesLoaded || !pair.available || !source.available || (sessionActive() && (!ownSession || snapshot.phase !== 'paused'));
+    byId('stopOutgoingBtn').hidden = !ownSession;
+    byId('stopOutgoingBtn').disabled = outgoingPending || busy();
 }
 function virtualStatus() {
     const value = values(), runtime = snapshot.audioRouting || {};
@@ -69,6 +107,7 @@ function virtualStatus() {
         : ['warning', '等待同传', '输出已启用，开始同传后发送', '原声和译音会使用下方设置；连接检测可以在同传前进行。'];
 }
 function renderStatus() {
+    renderOutgoing();
     const [state, label, title, detail] = virtualStatus();
     byId('virtualStatus').textContent = label; byId('virtualStatus').dataset.state = state;
     byId('virtualStatusPanel').dataset.state = state;
@@ -117,7 +156,22 @@ async function flush() {
 }
 async function refreshDevices() {
     try { devices = await api.mediaCommand('enumerate-devices'); devicesLoaded = true; renderDevices(); }
-    catch (error) { status('routeTestStatus', '无法读取设备：' + error.message, true); }
+    catch (error) { devicesLoaded = false; renderOutgoing(); status('outgoingStatusDetail', '无法读取设备：' + error.message, true); status('routeTestStatus', '无法读取设备：' + error.message, true); }
+}
+async function runOutgoing(stop = false) {
+    if (outgoingPending) return;
+    const resume = !stop && outgoingActive() && snapshot.phase === 'paused';
+    const sessionId = snapshot.sessionId;
+    outgoingPending = true; renderOutgoing();
+    byId('outgoingActionStatus').hidden = false;
+    status('outgoingActionStatus', stop ? '正在停止并保存…' : '正在准备发言翻译…');
+    try {
+        await flush();
+        const result = await api.mediaCommand(stop ? 'stop' : resume ? 'resume' : 'start', { mode: 'outgoing', ...(stop || resume ? { sessionId } : {}) });
+        applySnapshot(result);
+        status('outgoingActionStatus', stop ? '发言翻译已停止，内容已保存。' : '已开始发言翻译，请在对方应用中选择 DDTrans Virtual Microphone。');
+    } catch (error) { status('outgoingActionStatus', error.message, true); }
+    finally { outgoingPending = false; renderOutgoing(); }
 }
 async function testOutput(target, verifyCapture = false) {
     const button = byId(target === 'monitor' ? 'testRouteBtn' : verifyCapture ? 'verifyVirtualBtn' : 'testVirtualBtn');
@@ -131,8 +185,10 @@ async function testOutput(target, verifyCapture = false) {
     finally { button.disabled = false; }
 }
 async function initialize() {
+    document.documentElement.dataset.audioSettingsReady = 'loading';
     for (const language of LANG_DATA) byId('targetLanguage').add(new Option(language.name + ' · ' + language.native, language.code));
-    if (!api) { status('saveStatus', '请在 DDTrans 桌面应用中打开音频设置。', true); document.querySelectorAll('input, select, button').forEach(node => { node.disabled = true; }); return; }
+    for (const language of OUTGOING_LANGUAGES) byId('outgoingTargetLanguage').add(new Option(language.name + ' · ' + language.native, language.code));
+    if (!api) { document.documentElement.dataset.audioSettingsReady = 'unavailable'; status('saveStatus', '请在 DDTrans 桌面应用中打开音频设置。', true); document.querySelectorAll('input, select, button').forEach(node => { node.disabled = true; }); return; }
     for (const key of ranges) {
         byId(key).addEventListener('input', event => change({ [key]: Number(event.target.value) / 100 }));
         byId(key).addEventListener('change', () => void flush().catch(() => {}));
@@ -145,11 +201,14 @@ async function initialize() {
         change({ [key]: event.target.value, [labelKey]: label }, true);
     });
     byId('monitorMode').addEventListener('change', event => change({ monitorMode: event.target.value }, true));
+    byId('outgoingTargetLanguage').addEventListener('change', event => change({ outgoingTargetLanguage: event.target.value }, true));
+    byId('startOutgoingBtn').addEventListener('click', () => void runOutgoing());
+    byId('stopOutgoingBtn').addEventListener('click', () => void runOutgoing(true));
     byId('targetLanguage').addEventListener('change', async event => {
         const value = event.target.value; event.target.disabled = true;
         try { await flush(); applySnapshot(await api.mediaCommand('set-target', { targetLanguage: value })); }
         catch (error) { status('routeTestStatus', error.message, true); }
-        finally { byId('targetLanguage').disabled = busy(); }
+        finally { byId('targetLanguage').disabled = busy() || outgoingActive(); }
     });
     byId('refreshDevicesBtn').addEventListener('click', () => void refreshDevices());
     byId('permissionBtn').addEventListener('click', async () => {
@@ -170,7 +229,10 @@ async function initialize() {
         if (event.type === 'audio-devices') { devices = event.devices; devicesLoaded = true; renderDevices(); }
     });
     window.addEventListener('pagehide', () => { unsubscribe(); if (Object.keys(pending).length) void flush().catch(() => {}); }, { once: true });
-    try { settings = await api.getAudioSettings(); applySnapshot(await api.getMediaSnapshot()); await refreshDevices(); renderDevices(); }
-    catch (error) { saveStatus(error.message, true); }
+    try {
+        settings = await api.getAudioSettings(); applySnapshot(await api.getMediaSnapshot());
+        await refreshDevices(); renderDevices();
+        document.documentElement.dataset.audioSettingsReady = devicesLoaded ? 'true' : 'error';
+    } catch (error) { document.documentElement.dataset.audioSettingsReady = 'error'; saveStatus(error.message, true); }
 }
 void initialize();

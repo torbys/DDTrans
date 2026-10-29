@@ -130,15 +130,32 @@ app.whenReady().then(async () => {
     let settings = await poll(() => page('/settings.html'));
     await poll(() => !settings.webContents.isLoadingMainFrame());
     await poll(() => js(settings, 'document.getElementById("virtualStatusTitle").textContent !== "正在读取音频设备"'));
+    await poll(() => js(settings, 'document.documentElement.dataset.audioSettingsReady === "true"'));
     report.devices = await js(settings, 'window.electronAPI.mediaCommand("enumerate-devices")');
+    const listeningTarget = await js(settings, 'document.getElementById("targetLanguage").value');
+    report.outgoing = await js(settings, '({deviceState:document.getElementById("outgoingStatus").dataset.deviceState,detail:document.getElementById("outgoingStatusDetail").textContent,startDisabled:document.getElementById("startOutgoingBtn").disabled})');
+    if (report.outgoing.deviceState !== 'available') {
+        assert.equal(report.outgoing.startDisabled, true);
+        assert.ok(report.outgoing.detail.length > 10);
+        const before = await js(home, 'window.electronAPI.getMediaSnapshot()');
+        await js(settings, 'document.getElementById("startOutgoingBtn").click()');
+        const after = await js(home, 'window.electronAPI.getMediaSnapshot()');
+        assert.equal(after.phase, before.phase); assert.equal(after.sessionId, before.sessionId);
+        report.checks.outgoingUnavailableDoesNotStart = true;
+    }
+    await js(settings, 'document.getElementById("outgoingTargetLanguage").value="ja";document.getElementById("outgoingTargetLanguage").dispatchEvent(new Event("change"))');
     await js(settings, 'document.getElementById("originalGain").value="33";document.getElementById("originalGain").dispatchEvent(new Event("input"));document.getElementById("closeBtn").click()');
     await poll(() => !page('/settings.html'));
     const persisted = await js(home, 'window.electronAPI.getAudioSettings()');
-    assert.equal(persisted.originalGain, 0.33); report.checks.quickCloseSaves = true;
+    assert.equal(persisted.originalGain, 0.33); assert.equal(persisted.outgoingTargetLanguage, 'ja');
+    report.checks.quickCloseSaves = true; report.checks.outgoingLanguageSaved = true;
     await js(home, 'document.getElementById("openSettingsBtn").click()');
     settings = await poll(() => page('/settings.html'));
     await poll(() => !settings.webContents.isLoadingMainFrame());
     await poll(() => js(settings, 'document.getElementById("originalGain").value === "33"'));
+    assert.equal(await js(settings, 'document.getElementById("outgoingTargetLanguage").value'), 'ja');
+    assert.equal(await js(settings, 'document.getElementById("targetLanguage").value'), listeningTarget);
+    report.checks.outgoingLanguageIndependent = true;
     report.checks.reopenRestores = true;
     await js(settings, 'window.electronAPI.mediaCommand("set-audio-routing",{virtualOutputEnabled:true,virtualRenderDeviceId:"ddtrans-device-does-not-exist"})');
     await poll(() => js(settings, 'document.getElementById("virtualStatus").textContent === "设备已断开"'));

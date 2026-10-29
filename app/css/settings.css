@@ -44,6 +44,10 @@ h2 { margin-bottom: 0; font-size: 16px; }
 .card-heading { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .card-heading.compact { margin-bottom: 9px; }
 .card-help { margin-bottom: 17px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+.device-name { margin: 5px 0 0; color: var(--muted); font-size: 12px; overflow-wrap: anywhere; }
+.outgoing-source .field-label { display: block; margin-bottom: 7px; color: #435061; font-size: 12px; font-weight: 650; }
+.outgoing-source strong { display: block; min-height: 36px; padding: 8px 0; font-size: 13px; overflow-wrap: anywhere; }
+.outgoing-card .button:disabled { cursor: not-allowed; }
 .status-pill { padding: 5px 9px; border-radius: 999px; background: #edf1f5; color: #6c7887; font-size: 11px; }
 .status-pill[data-state="ready"], .status-pill[data-state="outputting"] { background: #e7f7ee; color: var(--green); }
 .status-pill[data-state="warning"], .status-pill[data-state="connecting"] { background: #fff5df; color: var(--amber); }

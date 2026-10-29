@@ -11,6 +11,7 @@ const {
 const {
   AUDIO_OUTPUT_SAMPLE_RATE,
   DEFAULT_AUDIO_ROUTING,
+  OUTGOING_LANGUAGES,
   validateAudioRoutingPatch,
 } = require('../app/js/audio-routing-config.js');
 
@@ -116,4 +117,44 @@ test('unknown audio routing fields are rejected before storage', t => {
   assert.throws(() => validateAudioRoutingPatch({ unexpected: true }), /unknown audio routing field/);
   assert.throws(() => store.replace({ unexpected: true }), /unknown audio routing field/);
   assert.equal(fs.existsSync(store.path), false);
+});
+
+test('outgoing target language is saved independently and survives reopening', t => {
+  const directory = temporaryDirectory(t);
+  const store = createAudioSettings({ userDataPath: directory });
+  assert.equal(store.get().outgoingTargetLanguage, 'en');
+  store.update({ outgoingTargetLanguage: 'ja' });
+  store.update({ originalGain: 0, monitorVolume: 0.4 });
+  const reopened = createAudioSettings({ userDataPath: directory }).get();
+  assert.equal(reopened.outgoingTargetLanguage, 'ja');
+  assert.equal(reopened.monitorVolume, 0.4);
+  assert.equal(reopened.originalGain, 0);
+});
+
+test('outgoing language accepts only supported spoken output and rejects invalid values atomically', t => {
+  const directory = temporaryDirectory(t);
+  const store = createAudioSettings({ userDataPath: directory });
+  store.update({ outgoingTargetLanguage: 'fr' });
+  const before = fs.readFileSync(store.path, 'utf8');
+  for (const value of ['yue', 'invalid', '', null, 1, {}, 'EN']) {
+    assert.throws(() => store.update({ outgoingTargetLanguage: value }), /invalid audio routing value for outgoingTargetLanguage/);
+    assert.equal(fs.readFileSync(store.path, 'utf8'), before);
+    assert.equal(normalizeAudioSettings({ outgoingTargetLanguage: value }).outgoingTargetLanguage, 'en');
+  }
+  assert.ok(OUTGOING_LANGUAGES.some(language => language.code === 'en'));
+  assert.ok(!OUTGOING_LANGUAGES.some(language => language.code === 'yue'));
+});
+
+test('listening and outgoing original gains persist independently with strict validation', t => {
+  const directory = temporaryDirectory(t);
+  const store = createAudioSettings({ userDataPath: directory });
+  store.update({ originalGain: 0.63, outgoingOriginalGain: 0.2 });
+  const reopened = createAudioSettings({ userDataPath: directory });
+  assert.equal(reopened.get().originalGain, 0.63);
+  assert.equal(reopened.get().outgoingOriginalGain, 0.2);
+  for (const value of [-1, 1.1, Number.NaN, '0', null]) {
+    assert.throws(() => reopened.update({ outgoingOriginalGain: value }), /invalid audio routing value for outgoingOriginalGain/);
+  }
+  assert.equal(reopened.get().originalGain, 0.63);
+  assert.equal(reopened.get().outgoingOriginalGain, 0.2);
 });

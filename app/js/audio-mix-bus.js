@@ -2,16 +2,49 @@ import { AUDIO_OUTPUT_SAMPLE_RATE, DEFAULT_AUDIO_ROUTING, normalizeAudioRouting,
 
 export { AUDIO_OUTPUT_SAMPLE_RATE, DEFAULT_AUDIO_ROUTING, normalizeAudioRouting };
 
+const virtualDevicePattern = /virtual|vb[- ]?audio|cable|voicemeeter|blackhole|loopback|wave link|soundflower|ddtrans|虚拟/i;
+const systemInputPattern = /stereo mix|what (?:u|you) hear|立体声混音|混音立体声|您听到的声音|系统音频/i;
+const isConcreteDevice = device => device.deviceId && !['default', 'communications'].includes(device.deviceId);
+
 export function classifyAudioDevices(devices = []) {
     const clean = kind => devices.filter(device => device.kind === kind && device.deviceId && device.deviceId !== 'communications').map(device => ({
         deviceId: device.deviceId,
         groupId: device.groupId || '',
         label: device.label || '',
         kind,
-        likelyVirtual: /virtual|vb[- ]?audio|cable|voicemeeter|blackhole|loopback|wave link|soundflower|ddtrans|虚拟/i.test(device.label || ''),
+        likelyVirtual: virtualDevicePattern.test(device.label || '') || (kind === 'audioinput' && systemInputPattern.test(device.label || '')),
     }));
     const inputs = clean('audioinput'), outputs = clean('audiooutput');
     return { inputs, outputs, virtualInputs: inputs.filter(device => device.likelyVirtual), virtualOutputs: outputs.filter(device => device.likelyVirtual) };
+}
+
+export function resolveDDTransVirtualPair({ inputs = [], outputs = [] } = {}) {
+    const named = (devices, label, kind) => devices.filter(device => {
+        const name = (device.label || '').trim().toLowerCase();
+        return isConcreteDevice(device) && (!device.kind || device.kind === kind)
+            && (name === label.toLowerCase() || name === (label + ' (DDTrans Virtual Audio)').toLowerCase());
+    });
+    const renders = named(outputs, 'DDTrans Virtual Input', 'audiooutput');
+    const captures = named(inputs, 'DDTrans Virtual Microphone', 'audioinput');
+    if (renders.length > 1 || captures.length > 1) return { available: false, status: 'ambiguous', message: '检测到多个同名 DDTrans 音频设备，请在 Windows 音频设置中停用重复设备后刷新。' };
+    if (renders.length !== 1 || captures.length !== 1) return { available: false, status: 'missing', message: 'DDTrans 虚拟麦克风不可用。需要同时检测到 DDTrans Virtual Input 和 DDTrans Virtual Microphone；安装并启用驱动后请刷新设备。' };
+    return { available: true, status: 'available', render: renders[0], capture: captures[0] };
+}
+
+export function resolveOutgoingMicrophone({ inputs = [] } = {}, deviceId = 'default') {
+    const microphones = inputs.filter(device => isConcreteDevice(device) && device.label && !device.likelyVirtual && !virtualDevicePattern.test(device.label) && !systemInputPattern.test(device.label));
+    let microphone;
+    if (deviceId && deviceId !== 'default') microphone = microphones.find(device => device.deviceId === deviceId);
+    else {
+        const defaultInput = inputs.find(device => device.deviceId === 'default');
+        const label = (defaultInput?.label || '').replace(/^(?:Default|默认(?:值|设备)?)\s*[-–:]\s*/i, '').trim();
+        const matches = microphones.filter(device => device.label.trim() === label);
+        if (matches.length === 1) microphone = matches[0];
+        else if (microphones.length === 1) microphone = microphones[0];
+    }
+    return microphone
+        ? { available: true, microphone }
+        : { available: false, message: '未找到可确定的真实麦克风。请授予麦克风权限，并在 Windows 中将真实麦克风设为默认输入后刷新；系统混音和虚拟输入不能用于发言翻译。' };
 }
 
 export function resolveAudioDevice(devices, id, label) {
