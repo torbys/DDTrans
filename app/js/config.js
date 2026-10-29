@@ -2,10 +2,6 @@
  * 全局常量与配置
  */
 
-// 音频采集参数
-export const TARGET_SAMPLE_RATE = 16000; // 千问 API 要求的采样率
-export const BUFFER_SIZE = 4096;         // ScriptProcessor 缓冲区大小 (2的幂次方)
-
 // 字号设置
 export const MIN_FONT_SIZE = 12;
 export const MAX_FONT_SIZE = 24;

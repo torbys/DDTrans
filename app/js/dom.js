@@ -20,11 +20,6 @@ export const targetArea = document.getElementById("targetArea");
 export const targetText = document.getElementById("targetText");
 export const sessionTitle = document.getElementById("sessionTitle");
 
-// 底部状态栏已移除，相关 DOM 引用保留但不再使用
-export let statusText = null;
-export let audioLevelEl = null;
-export let connectionStatusEl = null;
-
 // AI语音
 export const aiVoiceBtn = document.getElementById("aiVoiceBtn");
 export const aiVoiceWrapper = document.getElementById("aiVoiceWrapper");
@@ -48,10 +43,6 @@ export const hotwordAdd = document.getElementById("hotwordAdd");
 export const layoutDropdown = document.getElementById("layoutDropdown");
 export const layoutMenu = document.getElementById("layoutMenu");
 export const layoutLabel = document.getElementById("layoutLabel");
-
-// 模型选择
-export const modelDropdown = document.getElementById("modelDropdown");
-export const modelMenu = document.getElementById("modelMenu");
 
 // 字号控制
 export const increaseFontBtn = document.getElementById("increaseFontBtn");
@@ -89,8 +80,8 @@ export const aspMicSub = document.getElementById("aspMicSub");
 // 浮动控制条
 export const floatingControls = document.getElementById("floatingControls");
 export const fcPauseBtn = document.getElementById("fcPauseBtn");
+export const fcRestartBtn = document.getElementById("fcRestartBtn");
 export const fcStopBtn = document.getElementById("fcStopBtn");
-export const fcAudioPlayBtn = document.getElementById("fcAudioPlayBtn");
 export const fcTimer = document.getElementById("fcTimer");
 export const fcVolumeBars = document.getElementById("fcVolumeBars");
 export const fcSourceBtn = document.getElementById("fcSourceBtn");
@@ -100,14 +91,21 @@ export const fcSourcePanel = document.getElementById("fcSourcePanel");
 export const fcSpSystemAudio = document.getElementById("fcSpSystemAudio");
 export const fcSpMicAudio = document.getElementById("fcSpMicAudio");
 
-// AI音频播放按钮（翻译区域顶部）
-export const aiAudioPlayBtn = document.getElementById("aiAudioPlayBtn");
-
 // 结束同传确认弹窗
 export const stopConfirmOverlay = document.getElementById("stopConfirmOverlay");
 export const stopConfirmClose = document.getElementById("stopConfirmClose");
 export const stopConfirmCancel = document.getElementById("stopConfirmCancel");
 export const stopConfirmOk = document.getElementById("stopConfirmOk");
+
+// 重新开始确认弹窗
+export const restartConfirmOverlay = document.getElementById("restartConfirmOverlay");
+export const restartConfirmClose = document.getElementById("restartConfirmClose");
+export const restartConfirmCancel = document.getElementById("restartConfirmCancel");
+export const restartConfirmOk = document.getElementById("restartConfirmOk");
+
+// 原文/译文区播放图标（暂停时显示）
+export const sourceSpeakerIcon = document.getElementById("sourceSpeakerIcon");
+export const targetSpeakerIcon = document.getElementById("targetSpeakerIcon");
 
 // 笔记区域
 export const notesArea = document.getElementById("notesArea");

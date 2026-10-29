@@ -8,8 +8,7 @@
 body {
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
         "Microsoft YaHei", sans-serif;
-    background: linear-gradient(135deg, #EED0F2 0%, #9EBAEB 50%, #96DFFF 100%);
-    background-attachment: fixed;
+    background: #fff;
     color: #333;
     min-height: 100vh;
     overflow: hidden;
@@ -19,8 +18,7 @@ body {
     display: flex;
     flex-direction: column;
     height: 100vh;
-    background-image: linear-gradient(to top, #accbee 0%, #e7f0fd 100%);
-    background-attachment: fixed;
+    background: #E8E8E8;
 }
 
 /* ========== 自定义标题栏 ========== */
@@ -86,12 +84,11 @@ body {
     width: 32px;
     height: 32px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.7);
-    backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.06);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #1890ff;
+    color: #666;
     font-size: 16px;
     cursor: pointer;
 }
@@ -113,7 +110,7 @@ body {
 }
 
 .title-bar-btn:hover {
-    background: rgba(255, 255, 255, 0.5);
+    background: rgba(0, 0, 0, 0.06);
 }
 
 .title-bar-btn.close:hover {
@@ -125,124 +122,95 @@ body {
 .home-main {
     flex: 1;
     display: flex;
-    flex-direction: column;
-    padding: 40px 80px 60px;
     overflow: hidden;
+    padding: 0 0 0 60px;
+}
+
+/* 左侧内容区 */
+.home-left {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 40px 40px 40px 0;
+    min-width: 0;
 }
 
 .home-header {
-    margin-bottom: 40px;
+    margin-top: 60px;
 }
 
 .home-title {
-    font-size: 32px;
+    font-size: 36px;
     font-weight: 700;
-    color: #fff;
-    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    margin-bottom: 8px;
+    color: #000;
+    margin-bottom: 12px;
+    letter-spacing: -0.5px;
 }
 
 .home-subtitle {
     font-size: 16px;
-    color: rgba(255, 255, 255, 0.85);
+    color: #666;
     font-weight: 400;
 }
 
-/* ========== 卡片区域 ========== */
-.home-cards {
+/* 按钮区域 - 左下角 */
+.home-actions {
     display: flex;
-    gap: 24px;
-    flex: 1;
-    align-items: stretch;
+    gap: 40px;
+    align-items: flex-end;
 }
 
-.home-card {
-    flex: 1;
-    border-radius: 20px;
-    padding: 40px;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    align-items: center;
+.home-btn {
+    color: #090909;
+    padding: 1.5em 2.7em;
+    font-size: 24px;
+    font-weight: 550;
+    border-radius: 0.5em;
+    background: #e8e8e8;
     cursor: pointer;
-    transition: all 0.3s ease;
-    position: relative;
-    overflow: hidden;
-    min-height: 300px;
+    border: 1px solid #e8e8e8;
+    transition: all 0.3s;
+    box-shadow: 6px 6px 12px #c5c5c5, -6px -6px 12px #ffffff;
 }
 
-.home-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15);
-}
-
-/* 创建同传 - 金色渐变 */
-.home-card-primary {
-    background: linear-gradient(135deg, #f5e6c8 0%, #e8d5a8 50%, #d4b896 100%);
-}
-
-.home-card-primary:hover {
-    background: linear-gradient(135deg, #f8ecd4 0%, #ecdcb8 50%, #dac2a4 100%);
-}
-
-/* 同传管理 - 白色半透明 */
-.home-card-secondary {
-    background: rgba(255, 255, 255, 0.75);
-    backdrop-filter: blur(12px);
-}
-
-.home-card-secondary:hover {
-    background: rgba(255, 255, 255, 0.9);
-}
-
-.card-content {
-    text-align: center;
-    z-index: 2;
-}
-
-.card-title {
-    font-size: 28px;
-    font-weight: 600;
-    color: #333;
-    margin-bottom: 8px;
-}
-
-.card-desc {
-    font-size: 14px;
+.home-btn:active {
     color: #666;
+    box-shadow: inset 4px 4px 12px #c5c5c5, inset -4px -4px 12px #ffffff;
 }
 
-.card-icon {
-    position: absolute;
-    bottom: 30px;
-    right: 30px;
-    width: 56px;
-    height: 56px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.5);
+/* ========== 右侧背景图 ========== */
+.home-right {
+    width: 45%;
+    min-width: 300px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 28px;
-    color: #666;
-    z-index: 2;
-    transition: all 0.3s;
+    padding: 0;
+    position: relative;
 }
 
-.home-card:hover .card-icon {
-    transform: scale(1.1);
-    background: rgba(255, 255, 255, 0.8);
+.bg-image-wrapper {
+    width: 100%;
+    height: 100%;
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
 }
 
-.card-decoration {
-    position: absolute;
-    bottom: -40px;
-    right: -40px;
-    width: 160px;
-    height: 160px;
-    border-radius: 50%;
-    background: rgba(255, 255, 255, 0.15);
-    z-index: 1;
+.bg-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    -webkit-mask-image:
+        linear-gradient(to bottom, transparent 0%, white 15%, white 85%, transparent 100%),
+        linear-gradient(to right, transparent 0%, white 20%, white 100%);
+    -webkit-mask-composite: source-in;
+    mask-image:
+        linear-gradient(to bottom, transparent 0%, white 15%, white 85%, transparent 100%),
+        linear-gradient(to right, transparent 0%, white 20%, white 100%);
+    mask-composite: intersect;
 }
 
 /* ========== 弹窗 ========== */
@@ -600,14 +568,34 @@ body {
 /* ========== 响应式 ========== */
 @media (max-width: 900px) {
     .home-main {
-        padding: 30px 40px 40px;
-    }
-
-    .home-cards {
         flex-direction: column;
+        padding: 0 30px;
     }
 
-    .home-card {
-        min-height: 200px;
+    .home-left {
+        padding: 30px 0;
+    }
+
+    .home-right {
+        width: 100%;
+        height: 300px;
+        min-width: auto;
+    }
+
+    .home-header {
+        margin-top: 20px;
+    }
+
+    .home-title {
+        font-size: 28px;
     }
 }
+
+.overlay-entry-status { min-height: 2.8em; max-width: 360px; font-size: 13px; line-height: 1.6; color: #677382; }
+.home-btn:disabled { opacity: .55; cursor: wait; }
+
+.home-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; width: 100%; max-width: 450px; }
+.home-actions .home-btn { padding: 20px 12px; font-size: 18px; }
+#openOverlayBtn { grid-column: 1 / -1; color: #fff; background: #31475e; border-color: #31475e; box-shadow: none; }
+#openSettingsBtn { grid-column: 1 / -1; color: #31475e; background: #edf4f7; border-color: #d2e4ea; box-shadow: none; }
+#openSettingsBtn:hover { background: #e3f0f4; border-color: #b8d5df; }

@@ -1,18 +1,38 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-// 暴露安全的 API 给渲染进程
-contextBridge.exposeInMainWorld('electronAPI', {
-  platform: process.platform,
-  versions: process.versions,
+function invoke(channel, ...args) {
+  return ipcRenderer.invoke(channel, ...args).catch(error => {
+    throw new Error(error.message.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, ''));
+  });
+}
 
-  // 窗口控制
-  minimizeWindow: () => ipcRenderer.invoke('window-minimize'),
-  maximizeWindow: () => ipcRenderer.invoke('window-maximize'),
-  closeWindow: () => ipcRenderer.invoke('window-close'),
+function subscribe(channel, callback) {
+  if (typeof callback !== 'function') throw new TypeError('回调必须是函数');
+  const listener = (_event, payload) => callback(payload);
+  ipcRenderer.on(channel, listener);
+  return () => ipcRenderer.removeListener(channel, listener);
+}
 
-  // 获取系统音频源（通过 desktopCapturer）
-  getSystemAudioSources: () => ipcRenderer.invoke('get-system-audio-sources'),
-
-  // 获取系统音频流（捕获整个屏幕的音频）
-  getSystemAudioStream: () => ipcRenderer.invoke('get-system-audio-stream'),
-});
+if (location.pathname === '/media-host.html') {
+  contextBridge.exposeInMainWorld('electronAPI', {
+    mediaCapabilities: ipcRenderer.sendSync('get-media-capabilities'),
+    onHostCommand: callback => subscribe('media-host-command', callback),
+    hostResult: result => ipcRenderer.send('media-host-result', result),
+    publishMediaEvent: mediaEvent => ipcRenderer.send('media-host-event', mediaEvent),
+    hostReady: () => ipcRenderer.send('media-host-ready'),
+  });
+} else {
+  contextBridge.exposeInMainWorld('electronAPI', {
+    platform: process.platform,
+    mediaCapabilities: ipcRenderer.sendSync('get-media-capabilities'),
+    minimizeWindow: () => invoke('window-minimize'),
+    maximizeWindow: () => invoke('window-maximize'),
+    closeWindow: () => invoke('window-close'),
+    openManageWindow: () => invoke('open-manage-window'),
+    openDetailWindow: sessionId => invoke('open-detail-window', sessionId),
+    mediaCommand: (command, payload = {}) => invoke('media-command', command, payload),
+    getMediaSnapshot: () => invoke('get-media-snapshot'),
+    onMediaEvent: callback => subscribe('media-event', callback),
+    copyText: text => invoke('copy-text', text),
+  });
+}

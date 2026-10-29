@@ -35,34 +35,26 @@
 
         <!-- 主页面内容 -->
         <div class="home-main">
-            <div class="home-header">
-                <h1 class="home-title">DDTrans AI同传</h1>
-                <p class="home-subtitle">高质量、低延迟的会议同传解决方案</p>
-            </div>
-
-            <div class="home-cards">
-                <!-- 创建同传 -->
-                <div class="home-card home-card-primary" id="createMeetingCard">
-                    <div class="card-content">
-                        <h2 class="card-title">创建同传</h2>
-                        <p class="card-desc">体验专属同传</p>
-                    </div>
-                    <div class="card-icon">
-                        <i class="ri-add-line"></i>
-                    </div>
-                    <div class="card-decoration"></div>
+            <!-- 左侧内容区 -->
+            <div class="home-left">
+                <div class="home-header">
+                    <h1 class="home-title">DDTrans AI同传</h1>
+                    <p class="home-subtitle">高质量、低延迟的会议同传解决方案</p>
                 </div>
 
-                <!-- 同传管理 -->
-                <div class="home-card home-card-secondary" id="manageMeetingCard">
-                    <div class="card-content">
-                        <h2 class="card-title">同传管理</h2>
-                        <p class="card-desc">查看历史记录</p>
-                    </div>
-                    <div class="card-icon">
-                        <i class="ri-folder-open-line"></i>
-                    </div>
-                    <div class="card-decoration"></div>
+                <div class="home-actions">
+                    <!-- 创建同传 -->
+                    <button class="home-btn" id="createMeetingCard">创建同传</button>
+
+                    <!-- 同传管理 -->
+                    <button class="home-btn" id="manageMeetingCard">同传管理</button>
+                </div>
+            </div>
+
+            <!-- 右侧背景图 -->
+            <div class="home-right">
+                <div class="bg-image-wrapper">
+                    <img src="../resources/icons/bg.jpg" alt="background" class="bg-image">
                 </div>
             </div>
         </div>

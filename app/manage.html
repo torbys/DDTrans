@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>会议记录 - DDTrans</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.min.css">
+    <link rel="stylesheet" href="./css/manage.css">
+</head>
+<body>
+    <div class="app">
+        <!-- 标题栏 -->
+        <div class="title-bar" id="titleBar">
+            <div class="title-bar-left">
+                <div class="brand">
+                    <div class="brand-icon">
+                        <img src="../resources/icons/logo.png" alt="DDTrans Logo">
+                    </div>
+                    <span class="brand-name">DDTrans</span>
+                </div>
+            </div>
+            <div class="title-bar-right">
+                <button class="title-bar-btn" id="minimizeBtn" title="最小化">
+                    <i class="ri-subtract-line"></i>
+                </button>
+                <button class="title-bar-btn" id="maximizeBtn" title="最大化/还原">
+                    <i class="ri-fullscreen-line"></i>
+                </button>
+                <button class="title-bar-btn close" id="closeBtn" title="关闭">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
+        </div>
+
+        <div class="manage-container">
+            <div class="manage-header">
+                <h1 class="manage-title">会议记录</h1>
+                <div class="search-box">
+                    <i class="ri-search-line search-icon"></i>
+                    <input type="text" id="searchInput" placeholder="请输入会议名称" class="search-input">
+                </div>
+            </div>
+
+            <!-- 列表头部 -->
+            <div class="list-header">
+                <div class="h-index">序号</div>
+                <div class="h-name">会议名称</div>
+                <div class="h-time" id="sortHeader">
+                    会议结束时间
+                    <i class="ri-arrow-down-s-fill sort-icon" id="sortIcon"></i>
+                </div>
+                <div class="h-duration">会议时长</div>
+                <div class="h-langs">语种</div>
+                <div class="h-action">操作</div>
+            </div>
+
+            <!-- 列表内容 -->
+            <div class="list-container" id="listContainer">
+                <!-- 动态填充 -->
+            </div>
+
+            <div class="manage-footer">
+                <span class="total-count" id="totalCount">共 0 条会议记录</span>
+                <div class="pagination" id="pagination">
+                    <button class="page-btn" id="prevBtn" disabled><i class="ri-arrow-left-s-line"></i></button>
+                    <span class="page-current" id="pageCurrent">1</span>
+                    <button class="page-btn" id="nextBtn" disabled><i class="ri-arrow-right-s-line"></i></button>
+                    <span class="page-jump">
+                        跳至 <input type="number" id="jumpInput" min="1" class="jump-input"> 页
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="./js/manage.js" type="module"></script>
+</body>
+</html>
