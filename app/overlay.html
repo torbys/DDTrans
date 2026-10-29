@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDTrans 悬浮同传</title>
+    <link rel="stylesheet" href="./css/overlay.css">
+</head>
+<body>
+    <main class="overlay-shell" id="overlayShell" aria-live="polite">
+        <section class="overlay-panel" aria-label="同传字幕">
+            <header class="overlay-header" id="dragRegion">
+                <div class="session-identity">
+                    <span class="connection-dot" id="connectionDot" aria-hidden="true"></span>
+                    <span class="session-name" id="meetingName">悬浮同传</span>
+                    <span class="session-state" id="sessionState">未开始</span>
+                </div>
+                <div class="header-actions no-drag">
+                    <button class="icon-button text-icon-button" id="hideSubtitlesBtn" type="button" title="隐藏字幕" aria-label="隐藏字幕">
+                        <span id="hideSubtitlesMark" aria-hidden="true">字幕</span>
+                    </button>
+                    <button class="icon-button text-icon-button" id="minimizeBtn" type="button" title="缩小为悬浮小球" aria-label="缩小为悬浮小球">
+                        <span aria-hidden="true">小球</span>
+                    </button>
+                    <button class="icon-button text-icon-button return-button" id="returnBtn" type="button" title="返回主界面，同传继续运行" aria-label="返回主界面，同传继续运行">
+                        <span aria-hidden="true">返回</span>
+                    </button>
+                </div>
+            </header>
+
+            <div class="subtitle-area" id="subtitleArea">
+                <div class="subtitle-empty" id="subtitleEmpty">
+                    <span class="empty-mark" aria-hidden="true">译</span>
+                    <p>开始采集电脑声音后，原文和译文会显示在这里</p>
+                </div>
+                <div class="segment-list" id="segmentList" aria-label="最近字幕"></div>
+            </div>
+
+            <section class="control-deck no-drag" aria-label="悬浮窗控制">
+                <div class="control-row primary-controls">
+                    <button class="capture-button" id="captureBtn" type="button">
+                        <span class="capture-icon" aria-hidden="true">声</span>
+                        <span>
+                            <strong id="captureLabel">开始收音</strong>
+                            <small id="captureHint">点击开始采集电脑声音</small>
+                        </span>
+                    </button>
+                    <div class="primary-actions">
+                        <button class="finish-button" id="exitBtn" type="button" title="结束同传并保存" aria-label="结束同传并保存">
+                            <span aria-hidden="true">■</span>
+                            <span>退出同传</span>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="control-row setting-row">
+                    <label class="setting-label" for="targetLanguage">
+                        <span class="setting-mark" aria-hidden="true">译</span>
+                        <span class="setting-copy">
+                            <strong>输出语言</strong>
+                            <small>源语言自动识别</small>
+                        </span>
+                    </label>
+                    <select id="targetLanguage" aria-label="目标语言"></select>
+                </div>
+
+                <div class="control-row setting-row tts-row" id="ttsRow">
+                    <span class="setting-label">
+                        <span class="setting-mark" aria-hidden="true">音</span>
+                        <span class="setting-copy">
+                            <strong>译音播报</strong>
+                            <small>关闭后字幕仍会更新</small>
+                        </span>
+                    </span>
+                    <div class="tts-controls">
+                        <button class="switch" id="ttsToggle" type="button" role="switch" aria-checked="false" aria-label="切换 TTS 播报"><span></span></button>
+                        <div class="range-control">
+                            <div class="range-value" id="ttsVolumeValue">70%</div>
+                            <input id="ttsVolume" class="volume-range" type="range" min="0" max="100" value="70" aria-label="译音播报音量">
+                            <div class="range-scale" aria-hidden="true"><span>小声</span><span>大声</span></div>
+                        </div>
+                    </div>
+                    <small class="inline-note" id="ttsNote" hidden>此语言仅支持文本输出</small>
+                </div>
+
+                <div class="control-row setting-row opacity-row">
+                    <label class="setting-label" for="opacityRange">
+                        <span class="setting-mark" aria-hidden="true">透</span>
+                        <span class="setting-copy">
+                            <strong>窗口透明度</strong>
+                            <small>左侧遮挡少，右侧更清晰</small>
+                        </span>
+                    </label>
+                    <div class="range-control">
+                        <div class="range-value" id="opacityValue">86%</div>
+                        <input id="opacityRange" class="opacity-range" type="range" min="50" max="100" value="86" aria-label="窗口透明度">
+                        <div class="range-scale" aria-hidden="true"><span>遮挡较少</span><span>更清晰</span></div>
+                    </div>
+                </div>
+            </section>
+
+            <footer class="overlay-footer">
+                <span class="elapsed-time" id="elapsedTime">00:00</span>
+                <span class="copy-tip"><span aria-hidden="true">复制</span> 长按复制原文和译文</span>
+                <div class="level-meter" aria-label="输入音量"><span id="levelBar"></span></div>
+            </footer>
+        </section>
+
+        <button class="overlay-ball" id="overlayBall" type="button" aria-label="恢复同传悬浮窗" title="单击恢复，拖动移动">
+            <span class="ball-pulse" id="ballPulse"></span>
+            <span class="ball-mark" aria-hidden="true">译</span>
+            <span class="ball-state" id="ballState">待命</span>
+        </button>
+    </main>
+
+    <menu class="copy-menu no-drag" id="copyMenu" aria-label="字幕操作">
+        <button type="button" id="copyMenuBtn"><span aria-hidden="true">复制</span> 复制这组字幕</button>
+    </menu>
+    <div class="feedback-toast" id="feedbackToast" role="status" aria-live="polite"></div>
+
+    <script type="module" src="./js/overlay.js"></script>
+</body>
+</html>

@@ -33,6 +33,14 @@ if (location.pathname === '/media-host.html') {
     mediaCommand: (command, payload = {}) => invoke('media-command', command, payload),
     getMediaSnapshot: () => invoke('get-media-snapshot'),
     onMediaEvent: callback => subscribe('media-event', callback),
+    enterOverlay: (options = {}) => invoke('enter-overlay', options),
+    getOverlayPreferences: () => invoke('get-overlay-preferences'),
+    updateOverlayPreferences: patch => invoke('update-overlay-preferences', patch),
+    onOverlayPreferences: callback => subscribe('overlay-preferences', callback),
+    setOverlayMode: mode => invoke('set-overlay-mode', mode),
+    moveOverlay: ({ deltaX, deltaY }) => invoke('move-overlay', { deltaX, deltaY }),
+    returnToMain: () => invoke('return-to-main'),
+    exitOverlay: () => invoke('exit-overlay'),
     copyText: text => invoke('copy-text', text),
   });
 }

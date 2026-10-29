@@ -32,6 +32,7 @@ function setPhase(next) {
     dom.aiVoiceBtn.disabled = state.isRunning; dom.hotwordBtn.disabled = state.isRunning;
     dom.startBtn.disabled = busy; dom.fcPauseBtn.disabled = busy;
     dom.fcStopBtn.disabled = next === 'stopping'; dom.fcRestartBtn.disabled = busy;
+    const overlayButton = document.getElementById('overlayBtn'); if (overlayButton) overlayButton.disabled = busy;
     dom.fcPauseBtn.setAttribute('aria-label', next === 'paused' ? '恢复同传' : '暂停同传');
     dom.fcPauseBtn.innerHTML = next === 'paused' ? '<i class="ri-play-fill"></i>' : '<i class="ri-pause-fill"></i>';
     dom.floatingControls.classList.toggle('show', state.isRunning && next !== 'starting');
@@ -112,6 +113,10 @@ export async function switchAudioSource() {
     sourceSwitching = true; lockSourceControls(true); stopReplay();
     try { applySnapshot(await mediaCommand('switch-source', { useSystemAudio: state.useSystemAudio, useMicAudio: state.useMicAudio, deviceId: state.selectedMicDeviceId })); }
     finally { sourceSwitching = false; lockSourceControls(['starting', 'pausing', 'stopping'].includes(phase)); }
+}
+export async function enterOverlay() {
+    if (!window.electronAPI) throw new Error('悬浮窗需要通过桌面应用打开');
+    stopReplay(); await flushNote(); await window.electronAPI.enterOverlay({ targetLanguage: state.currentTargetLang });
 }
 export function stopReplay() { replayGeneration++; if (replay) { replay.pause(); replay.src = ''; replay = null; replayDone?.(); replayDone = null; } }
 export async function playRecording(type) {

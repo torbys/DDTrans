@@ -3,7 +3,7 @@ import { LANG_DATA, TEXT_ONLY_LANGS } from './config.js';
 const activePhases = new Set(['starting', 'running', 'pausing', 'paused', 'stopping']);
 const languages = new Set(LANG_DATA.map(language => language.code));
 
-export function createMediaSession({ createCapture, createPlayer, createSocket, publish = () => {}, capabilities = {}, now = Date.now }) {
+export function createMediaSession({ createCapture, createPlayer, createSocket, publish = () => {}, capabilities = {}, loadHotwords = () => [], now = Date.now }) {
     let phase = 'idle', sessionId = null, capture = null, player = null, socket = null;
     let queue = Promise.resolve(), stopping = null, clock = null, accumulatedMs = 0, activeStart = 0;
     let ttsEnabled = true, ttsVolume = 0.8, note = '', noteTimer = null, noteDirty = false, lastLevel = 0;
@@ -331,8 +331,10 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
             }
             if (payload.defer) noteTimer = setTimeout(() => void execute('save-note').catch(error => inform(error.message, 'error')), 500);
             else await persistNote();
+        } else if (name === 'prepare-overlay') {
+            if (!activePhases.has(phase)) await start({ ...payload, meetingName: payload.meetingName || '悬浮同传 ' + new Date().toLocaleString('zh-CN'), useSystemAudio: true, useMicAudio: false, audioEnabled: true, hotwords: loadHotwords() });
         } else if (name !== 'snapshot') throw new Error('不支持的媒体操作');
-        return snapshot(['snapshot', 'start', 'stop', 'set-target'].includes(name));
+        return snapshot(['snapshot', 'start', 'stop', 'prepare-overlay', 'set-target'].includes(name));
     }
 
     function execute(name, payload = {}) {

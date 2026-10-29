@@ -81,3 +81,13 @@ document.addEventListener('keydown', event => { if (event.key === 'Escape') void
 window.addEventListener('pagehide', () => void stopTest());
 updateLanguage();
 
+byId('openOverlayBtn').addEventListener('click', async () => {
+    const button = byId('openOverlayBtn'), status = byId('overlayEntryStatus');
+    button.disabled = true; status.textContent = '正在准备系统音频和悬浮同传…';
+    try {
+        await stopTest();
+        if (!window.electronAPI) throw new Error('悬浮窗需要通过桌面应用打开');
+        await window.electronAPI.enterOverlay({ targetLanguage: target });
+    } catch (error) { status.textContent = error.message; }
+    finally { button.disabled = false; }
+});
