@@ -13,6 +13,8 @@ const els = {
     ttsToggle: byId('ttsToggle'),
     ttsVolume: byId('ttsVolume'),
     ttsVolumeValue: byId('ttsVolumeValue'),
+    originalGain: byId('originalGain'), originalGainValue: byId('originalGainValue'),
+    translatedGain: byId('translatedGain'), translatedGainValue: byId('translatedGainValue'),
     ttsNote: byId('ttsNote'),
     opacityRange: byId('opacityRange'),
     opacityValue: byId('opacityValue'),
@@ -21,6 +23,8 @@ const els = {
     minimizeBtn: byId('minimizeBtn'),
     returnBtn: byId('returnBtn'),
     exitBtn: byId('exitBtn'),
+    permissionBtn: byId('permissionBtn'),
+    audioSettingsBtn: byId('audioSettingsBtn'),
     subtitleArea: byId('subtitleArea'),
     subtitleEmpty: byId('subtitleEmpty'),
     segmentList: byId('segmentList'),
@@ -52,6 +56,7 @@ const state = {
     pendingTargetLanguage: null,
     toastTimer: null,
     pending: false,
+    audioDraft: {},
 };
 
 const runningPhases = new Set(['running', 'pausing', 'paused']);
@@ -237,6 +242,7 @@ function ttsBlockReason(snapshot) {
     const { config, capabilities } = snapshot;
     if (config.audioEnabled === false) return '本次会话仅输出文字，请结束后开启译音再开始';
     if (TEXT_ONLY_LANGS.includes(config.targetLanguage)) return '此语言仅支持文本输出';
+    if (config.useSystemAudio && capabilities.isolatedTts === false) return '当前设备会保存译音后回放';
     return '';
 }
 
@@ -294,11 +300,19 @@ function render() {
     byId('ttsRow').title = ttsReason;
     els.ttsToggle.setAttribute('aria-description', ttsReason || '只改变译音播报，字幕和采集继续运行');
     els.ttsNote.hidden = !ttsReason;
-    const ttsVolumePercent = Math.round((snapshot.ttsVolume ?? 0.8) * 100);
+    const ttsVolumePercent = Math.round((state.audioDraft.ttsVolume ?? snapshot.ttsVolume ?? 0.8) * 100);
     const opacityPercent = Math.round(preferences.opacity * 100);
     els.ttsVolume.value = String(ttsVolumePercent);
     els.ttsVolumeValue.textContent = `${ttsVolumePercent}%`;
     els.ttsVolume.setAttribute('aria-valuetext', `${ttsVolumePercent}%，${ttsVolumePercent === 0 ? '静音' : ttsVolumePercent < 50 ? '小声' : ttsVolumePercent > 80 ? '大声' : '中等音量'}`);
+    const routing = { ...snapshot.audioRouting, ...state.audioDraft };
+    for (const key of ['originalGain', 'translatedGain']) {
+        const value = Math.round((routing[key] ?? 1) * 100);
+        if (document.activeElement !== els[key]) els[key].value = String(value);
+        els[key + 'Value'].textContent = `${value}%`;
+        els[key].setAttribute('aria-valuetext', value ? `${value}%` : '静音');
+    }
+    byId('mixRow').title = routing.virtualOutputReady ? '正在调节发送到选定输出的混音' : '增益已保存，开启虚拟输出后生效；也可在设置中选择混合监听';
     els.opacityRange.value = String(opacityPercent);
     els.opacityValue.textContent = `${opacityPercent}%`;
     els.opacityRange.setAttribute('aria-valuetext', `${opacityPercent}%，${opacityPercent < 75 ? '遮挡较少' : '更清晰'}`);
@@ -517,16 +531,38 @@ function bindControls() {
         void runMediaCommand('set-tts', { enabled: !state.snapshot.ttsEnabled });
     });
 
-    els.ttsVolume.addEventListener('input', event => {
-        state.snapshot.ttsVolume = Number(event.target.value) / 100;
-        render();
-    });
-    els.ttsVolume.addEventListener('change', event => void runMediaCommand('set-volume', { volume: Number(event.target.value) / 100 }));
+    let gainTimer, gainQueue = Promise.resolve(true);
+    function saveGains() {
+        clearTimeout(gainTimer);
+        const patch = { ...state.audioDraft };
+        if (!Object.keys(patch).length) return gainQueue;
+        gainQueue = gainQueue.then(async () => {
+            try {
+                const snapshot = await api.mediaCommand('set-audio-routing', patch);
+                for (const [key, value] of Object.entries(patch)) if (state.audioDraft[key] === value) delete state.audioDraft[key];
+                mergeSnapshot(snapshot);
+                return true;
+            } catch (error) { showFeedback(error.message, 'error'); return false; }
+        });
+        return gainQueue;
+    }
+    async function leaveAfterSave(method) {
+        if (await saveGains()) await invoke(method);
+    }
+    for (const key of ['originalGain', 'translatedGain', 'ttsVolume']) {
+        els[key].addEventListener('input', event => {
+            state.audioDraft[key] = Number(event.target.value) / 100; render();
+            clearTimeout(gainTimer); gainTimer = setTimeout(saveGains, 100);
+        });
+        els[key].addEventListener('change', saveGains);
+    }
     els.opacityRange.addEventListener('input', event => updatePreferences({ opacity: Number(event.target.value) / 100 }));
     els.hideSubtitlesBtn.addEventListener('click', () => updatePreferences({ subtitlesVisible: !state.preferences.subtitlesVisible }));
     els.minimizeBtn.addEventListener('click', () => void setMode('ball'));
-    els.returnBtn.addEventListener('click', () => void invoke('returnToMain'));
-    els.exitBtn.addEventListener('click', () => void invoke('exitOverlay'));
+    els.returnBtn.addEventListener('click', () => void leaveAfterSave('returnToMain'));
+    els.exitBtn.addEventListener('click', () => void leaveAfterSave('exitOverlay'));
+    els.audioSettingsBtn.addEventListener('click', () => void leaveAfterSave('openAudioSettings'));
+    els.permissionBtn.addEventListener('click', () => void invoke('openPermissionSettings'));
     els.copyMenuBtn.addEventListener('click', () => {
         if (state.copySegmentKey) void copySegment(state.copySegmentKey);
         closeCopyMenu();
@@ -548,6 +584,7 @@ function bindMediaEvents() {
     const unsubscribe = api.onMediaEvent(event => {
         if (!event) return;
         if (event.type === 'snapshot') mergeSnapshot(event.snapshot);
+        if (event.type === 'audio-routing') mergeSnapshot({ audioRouting: event.audioRouting });
         if (event.type === 'segment') updateSegment(event.segment);
         if (event.type === 'feedback') showFeedback(event.message, event.kind);
         if (event.type === 'level') els.levelBar.style.width = `${Math.round(Math.max(0, Math.min(1, Number(event.level) || 0)) * 100)}%`;

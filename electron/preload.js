@@ -16,6 +16,8 @@ function subscribe(channel, callback) {
 if (location.pathname === '/media-host.html') {
   contextBridge.exposeInMainWorld('electronAPI', {
     mediaCapabilities: ipcRenderer.sendSync('get-media-capabilities'),
+    audioSettings: ipcRenderer.sendSync('get-audio-settings'),
+    saveAudioSettings: settings => invoke('persist-audio-settings', settings),
     onHostCommand: callback => subscribe('media-host-command', callback),
     hostResult: result => ipcRenderer.send('media-host-result', result),
     publishMediaEvent: mediaEvent => ipcRenderer.send('media-host-event', mediaEvent),
@@ -25,6 +27,7 @@ if (location.pathname === '/media-host.html') {
   contextBridge.exposeInMainWorld('electronAPI', {
     platform: process.platform,
     mediaCapabilities: ipcRenderer.sendSync('get-media-capabilities'),
+    audioSettings: ipcRenderer.sendSync('get-audio-settings'),
     minimizeWindow: () => invoke('window-minimize'),
     maximizeWindow: () => invoke('window-maximize'),
     closeWindow: () => invoke('window-close'),
@@ -41,6 +44,10 @@ if (location.pathname === '/media-host.html') {
     moveOverlay: ({ deltaX, deltaY }) => invoke('move-overlay', { deltaX, deltaY }),
     returnToMain: () => invoke('return-to-main'),
     exitOverlay: () => invoke('exit-overlay'),
+    openAudioSettings: () => invoke('open-audio-settings'),
+    openSystemAudioSettings: () => invoke('open-system-audio-settings'),
+    getAudioSettings: () => invoke('get-audio-settings'),
+    openPermissionSettings: () => invoke('open-permission-settings'),
     copyText: text => invoke('copy-text', text),
   });
 }

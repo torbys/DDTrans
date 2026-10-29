@@ -1,7 +1,7 @@
 {
   "name": "ai-simultaneous-translation",
   "version": "2.0.0",
-  "description": "Qwen 3.8 实时同传 · 悬浮字幕与后台媒体会话",
+  "description": "Qwen 3.8 实时同传 · 说话人字幕与本地记录",
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
@@ -9,11 +9,12 @@
     "serve": "node electron/service.js",
     "test": "node --test tests/*.test.cjs",
     "probe": "node scripts/probe-realtime.cjs",
+    "verify:overlay": "electron scripts/verify-overlay.cjs",
     "verify:loopback": "electron scripts/verify-loopback.cjs",
     "verify:capture": "electron scripts/verify-capture.cjs",
     "verify:live": "electron scripts/verify-electron.cjs",
-    "verify:desktop": "electron scripts/verify-desktop.cjs",
-    "verify:overlay": "electron scripts/verify-overlay.cjs"
+    "verify:audio-routing": "electron scripts/verify-audio-routing.cjs",
+    "verify:desktop": "electron scripts/verify-desktop.cjs"
   },
   "devDependencies": {
     "electron": "45.1.0"

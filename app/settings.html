@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDTrans 系统音频设置</title>
+    <link rel="stylesheet" href="./css/settings.css">
+</head>
+<body>
+    <div class="settings-app">
+        <header class="title-bar" id="titleBar">
+            <div class="title-brand">
+                <span class="brand-mark">译</span>
+                <div>
+                    <strong>系统音频设置</strong>
+                    <small>管理虚拟输出、本地监听和发送混音</small>
+                </div>
+            </div>
+            <div class="title-actions">
+                <button id="minimizeBtn" type="button" title="最小化" aria-label="最小化设置窗口">−</button>
+                <button id="closeBtn" type="button" title="关闭" aria-label="关闭设置，保持同传">×</button>
+            </div>
+        </header>
+
+        <main class="settings-content">
+            <div class="page-intro">
+                <div>
+                    <p class="eyebrow">声音与设备</p>
+                    <h1>音频设置</h1>
+                    <p class="intro-copy">调好自己听到的译音，再把原声和译音发送给游戏或会议。更改会自动保存，正在进行的同传也会同步更新。</p>
+                </div>
+                <div class="intro-actions">
+                    <button class="button secondary" id="refreshDevicesBtn" type="button">刷新设备</button>
+                    <button class="button secondary" id="permissionBtn" type="button">申请麦克风权限</button>
+                    <button class="button secondary" id="permissionSettingsBtn" type="button" hidden>打开麦克风权限设置</button>
+                </div>
+            </div>
+
+            <div class="settings-columns">
+                <section class="card">
+                    <div class="card-heading compact">
+                        <div>
+                            <p class="eyebrow">发送音量</p>
+                            <h2>原声与译音</h2>
+                        </div>
+                    </div>
+                    <p class="card-help">原声来自当前同传的采集源。向左拉到 0 即静音，向右增大；译音单独调节。这里不会改变 Windows 中其他应用的原声音量。</p>
+                    <div class="range-field">
+                        <div class="range-heading"><label for="originalGain">原声</label><output id="originalGainValue">100%</output></div>
+                        <input id="originalGain" type="range" min="0" max="100" value="100">
+                        <div class="range-scale"><span>静音</span><span>大声</span></div>
+                    </div>
+                    <div class="range-field">
+                        <div class="range-heading"><label for="translatedGain">译音</label><output id="translatedGainValue">100%</output></div>
+                        <input id="translatedGain" type="range" min="0" max="100" value="100">
+                        <div class="range-scale"><span>静音</span><span>大声</span></div>
+                    </div>
+                    <label class="toggle-line divider-top">
+                        <span>
+                            <strong>译音播报</strong>
+                            <small>关闭后仍然收音、翻译和刷新字幕</small>
+                        </span>
+                        <input id="ttsEnabled" type="checkbox" checked>
+                    </label>
+                    <div class="range-field">
+                        <div class="range-heading"><label for="ttsVolume">译音总音量</label><output id="ttsVolumeValue">80%</output></div>
+                        <input id="ttsVolume" type="range" min="0" max="100" value="80">
+                        <div class="range-scale"><span>小声</span><span>大声</span></div>
+                    </div>
+                    <p class="card-help" id="ttsSessionNote">译音总音量同时作用于监听和发送；关闭播报不会停止翻译或字幕保存。</p>
+                    <div class="mix-legend">
+                        <span><i class="dot original"></i>原声 <b id="mixOriginalPreview">100%</b></span>
+                        <span><i class="dot translated"></i>译音 <b id="mixTranslatedPreview">100%</b></span>
+                    </div>
+                </section>
+
+                <section class="card">
+                    <div class="card-heading compact">
+                        <div>
+                            <p class="eyebrow">自己听到的声音</p>
+                            <h2>本地监听</h2>
+                        </div>
+                    </div>
+                    <p class="card-help">默认只播放译音，避免电脑原声重复播放。混合预听可以检查发送效果；使用麦克风时建议戴耳机。</p>
+                    <label class="toggle-line">
+                        <span>
+                            <strong>开启本地监听</strong>
+                            <small>把译音或混合预听播放到耳机</small>
+                        </span>
+                        <input id="monitorEnabled" type="checkbox" checked>
+                    </label>
+                    <div class="field">
+                        <label for="monitorMode">监听内容</label>
+                        <select id="monitorMode"><option value="translated">只听译音</option><option value="mix">原声 + 译音（预听发送效果）</option></select>
+                    </div>
+                    <div class="field">
+                        <label for="monitorDevice">本地监听设备</label>
+                        <select id="monitorDevice"></select>
+                    </div>
+                    <div class="range-field">
+                        <div class="range-heading"><label for="monitorVolume">监听音量</label><output id="monitorVolumeValue">80%</output></div>
+                        <input id="monitorVolume" type="range" min="0" max="100" value="80">
+                        <div class="range-scale"><span>小声</span><span>大声</span></div>
+                    </div>
+                    <div class="button-row">
+                        <button class="button primary" id="testRouteBtn" type="button">试播监听</button>
+                        <button class="button secondary" id="openSystemAudioBtn" type="button">打开 Windows 音频设置</button>
+                    </div>
+                    <p id="monitorStatus" class="inline-status" role="status"></p>
+                </section>
+            </div>
+
+            <section class="card virtual-card">
+                <div class="card-heading">
+                    <div>
+                        <p class="eyebrow">发送给其他应用</p>
+                        <h2>虚拟麦克风输出</h2>
+                    </div>
+                    <span class="status-pill" id="virtualStatus">未启用</span>
+                </div>
+                <p class="card-help">选择已安装的虚拟音频线缆，把混音送入其他应用。外部应用需要选择与输出配对的麦克风；未安装虚拟设备时，可先用普通播放设备试播。</p>
+                <div class="status-panel" id="virtualStatusPanel">
+                    <span class="status-icon" aria-hidden="true">●</span>
+                    <div>
+                        <strong id="virtualStatusTitle">正在读取设备状态</strong>
+                        <p id="virtualStatusDetail">请刷新设备列表。</p>
+                    </div>
+                </div>
+                <div class="form-grid two-columns">
+                    <label class="toggle-line">
+                        <span>
+                            <strong>启用虚拟输出</strong>
+                            <small>把混音发送到选定的输出端点</small>
+                        </span>
+                        <input id="virtualOutputEnabled" type="checkbox">
+                    </label>
+                    <div class="field">
+                        <label for="virtualRenderDevice">DDTrans 输出到</label>
+                        <select id="virtualRenderDevice"></select>
+                        <small>例如 CABLE Input。没有虚拟设备时，普通扬声器仅用于试播。</small>
+                    </div>
+                    <div class="field">
+                        <label for="targetLanguage">译音语言</label>
+                        <select id="targetLanguage"></select>
+                        <small>与当前同传共用；运行中更改会保存当前会话，再以新语言继续。</small>
+                    </div>
+                    <div class="field">
+                        <label for="virtualCaptureDevice">外部软件选择</label>
+                        <select id="virtualCaptureDevice"></select>
+                        <small>例如 CABLE Output。请在会议或游戏的麦克风选项中选择同一设备。</small>
+                    </div>
+                </div>
+                <div class="button-row route-tests"><button class="button secondary" id="testVirtualBtn" type="button">试播到选定输出</button><button class="button secondary" id="verifyVirtualBtn" type="button">检测虚拟麦克风连接</button></div>
+                <p id="routeTestStatus" class="inline-status" role="status"></p>
+            </section>
+
+            <section class="card diagnostics-card">
+                <div class="card-heading compact">
+                    <div>
+                        <p class="eyebrow">音频诊断</p>
+                        <h2>运行状态</h2>
+                    </div>
+                    <button id="saveStatus" class="save-status" type="button" aria-live="polite">设置会自动保存</button>
+                </div>
+                <div class="diagnostics-grid">
+                    <div><span>输出状态</span><strong id="diagnosticStatus">未启动</strong></div>
+                    <div><span>采样率</span><strong id="diagnosticSampleRate">48 kHz</strong></div>
+                    <div><span>设备延迟估计</span><strong id="diagnosticLatency">—</strong></div>
+                    <div><span>待播译音</span><strong id="diagnosticBuffer">0 ms</strong></div>
+                    <div><span>混音限幅采样</span><strong id="diagnosticClipping">0</strong></div>
+                    <div><span>虚拟输出</span><strong id="diagnosticVirtual">未启用</strong></div>
+                </div>
+                <div class="output-meter"><label for="mixLevel">发送混音电平</label><meter id="mixLevel" min="0" max="1" value="0"></meter></div>
+                <p class="card-help latency-note">延迟仅反映音频输出设备，不包含模型翻译、网络或外部应用的延迟。</p>
+                <p class="diagnostic-error" id="diagnosticError" hidden></p>
+            </section>
+        </main>
+    </div>
+    <script type="module" src="./js/settings.js"></script>
+</body>
+</html>
