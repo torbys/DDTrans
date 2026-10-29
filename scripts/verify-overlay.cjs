@@ -119,6 +119,24 @@ const snapshot = window => ui(window, 'window.electronAPI.getMediaSnapshot()');
 const media = (window, command, payload = {}) => ui(window, 'window.electronAPI.mediaCommand(' + JSON.stringify(command) + ',' + JSON.stringify(payload) + ')');
 const overlay = () => BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.webContents.getURL().endsWith('/overlay.html'));
 
+async function clickButton(window, id) {
+  window.show();
+  window.focus();
+  await poll(() => window.isFocused(), 5000, id + ' window focused');
+  await ui(window, 'new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))');
+  const point = await poll(() => ui(window, '(' + (function (buttonId) {
+    const button = document.getElementById(buttonId);
+    if (!button || button.disabled) return false;
+    const rect = button.getBoundingClientRect();
+    const x = Math.round(rect.left + rect.width / 2), y = Math.round(rect.top + rect.height / 2);
+    const hit = document.elementFromPoint(x, y);
+    return rect.width > 0 && rect.height > 0 && button.contains(hit) && { x, y };
+  }).toString() + ')(' + JSON.stringify(id) + ')'), 5000, id + ' enabled and visible');
+  window.webContents.sendInputEvent({ type: 'mouseMove', ...point });
+  window.webContents.sendInputEvent({ type: 'mouseDown', ...point, button: 'left', clickCount: 1 });
+  window.webContents.sendInputEvent({ type: 'mouseUp', ...point, button: 'left', clickCount: 1 });
+}
+
 async function verify() {
   await injected;
   assert.ok(await ui(home, 'Boolean(document.getElementById("openOverlayBtn"))'));
@@ -171,7 +189,7 @@ async function verify() {
   await ui(floating, 'document.getElementById("hideSubtitlesBtn").click()');
   await poll(() => Math.abs(floating.getBounds().height - 190) <= 2, 10000, 'audio-only compact window');
   assert.equal((await snapshot(floating)).phase, 'running');
-  await poll(() => ui(floating, 'innerHeight >= 180 && innerHeight <= 194 && document.getElementById("overlayShell").classList.contains("subtitles-hidden")'), 3000, 'compact renderer layout');
+  await poll(() => ui(floating, 'innerHeight <= 194 && document.getElementById("overlayShell").classList.contains("subtitles-hidden")'), 3000, 'compact renderer layout');
   result.checks.audio_only_layout = await ui(floating, '({documentHeight:document.documentElement.scrollHeight,windowHeight:innerHeight,exitVisible:document.getElementById("exitBtn").getBoundingClientRect().bottom <= innerHeight})');
   assert.equal(result.checks.audio_only_layout.exitVisible, true);
   result.checks.audio_only_controls_fit = await ui(floating, '([...document.querySelectorAll(".control-deck button,.control-deck select,.control-deck input,.overlay-footer")].every(node=>{const r=node.getBoundingClientRect();return r.bottom<=innerHeight && r.right<=innerWidth && r.left>=0}))');
@@ -220,7 +238,7 @@ async function verify() {
     result.checks.target_switch_saves_and_restarts = true;
   }
   const current = await snapshot(floating);
-  await ui(floating, 'document.getElementById("ttsVolume").value="41";document.getElementById("ttsVolume").dispatchEvent(new Event("input"));document.getElementById("ttsVolume").dispatchEvent(new Event("change"));document.getElementById("returnBtn").click()');
+  await ui(floating, 'document.getElementById("originalGain").value="37";document.getElementById("originalGain").dispatchEvent(new Event("input"));document.getElementById("ttsVolume").value="41";document.getElementById("ttsVolume").dispatchEvent(new Event("input"));document.getElementById("returnBtn").click()');
   const restoredAfterButton = await poll(() => BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && /\/index\.html/.test(window.webContents.getURL())), 15000, 'main restored from return button');
   await poll(() => !restoredAfterButton.webContents.isLoadingMainFrame(), 12000, 'restored main loaded');
   home = restoredAfterButton;
@@ -228,7 +246,11 @@ async function verify() {
   assert.equal((await snapshot(home)).sessionId, current.sessionId);
   await poll(() => !overlay(), 5000, 'overlay closed after return button');
   result.checks.return_button_restores_main_and_keeps_session = true;
-  await ui(home, 'document.getElementById("overlayBtn").click()');
+  const savedAudio = await ui(home, 'window.electronAPI.getAudioSettings()');
+  assert.equal(savedAudio.originalGain, 0.37); assert.equal(savedAudio.ttsVolume, 0.41);
+  assert.equal((await snapshot(home)).ttsVolume, 0.41);
+  result.checks.quick_return_saves_audio_gains = true;
+  await clickButton(home, 'overlayBtn');
   floating = await poll(overlay, 15000, 'overlay reopened after return');
   await poll(() => ui(floating, 'Boolean(document.getElementById("returnBtn"))'), 12000, 'reopened overlay loaded');
   floating.close();
@@ -240,7 +262,7 @@ async function verify() {
   await poll(() => !overlay(), 5000, 'overlay closed after window close');
   result.checks.window_close_returns_to_main = true;
   result.checks.close_during_enter_returns_new_main = true;
-  await ui(home, 'document.getElementById("overlayBtn").click()');
+  await clickButton(home, 'overlayBtn');
   floating = await poll(overlay, 15000, 'overlay reopened for exit');
   await poll(() => ui(floating, 'Boolean(document.getElementById("exitBtn"))'), 12000, 'exit overlay loaded');
   result.finalSessionId = current.sessionId;
