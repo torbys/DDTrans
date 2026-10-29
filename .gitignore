@@ -42,3 +42,8 @@ logs/
 # 临时文件
 tmp/
 temp/
+
+# 本地数据库、录音、探针与迁移备份
+data/
+*.db-wal
+*.db-shm

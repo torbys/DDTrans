@@ -1,13 +1,22 @@
 {
   "name": "ai-simultaneous-translation",
-  "version": "1.0.0",
-  "description": "AI 同声传译助手 - Electron 桌面应用",
+  "version": "2.0.0",
+  "description": "Qwen 3.8 实时同传 · Node 网关与本地会话存储",
   "main": "electron/main.js",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --dev"
+    "dev": "electron . --dev",
+    "serve": "node electron/service.js",
+    "test": "node --test tests/*.test.cjs",
+    "probe": "node scripts/probe-realtime.cjs"
   },
   "devDependencies": {
-    "electron": "^31.7.7"
+    "electron": "45.1.0"
+  },
+  "dependencies": {
+    "ws": "8.22.0"
+  },
+  "engines": {
+    "node": ">=24.13.0"
   }
 }
