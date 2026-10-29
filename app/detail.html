@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>会议详情 - DDTrans</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.min.css">
+    <link rel="stylesheet" href="./css/detail.css">
+</head>
+<body>
+    <div class="app">
+        <!-- 顶部工具栏 -->
+        <div class="detail-toolbar" id="detailToolbar">
+            <div class="toolbar-left">
+                <button class="toolbar-btn back-btn" id="backBtn" title="返回">
+                    <i class="ri-arrow-left-s-line"></i>
+                </button>
+                <span class="meeting-name" id="meetingName">会议记录</span>
+                <div class="toolbar-tags">
+                    <span class="tag"><i class="ri-shield-check-line"></i>内容自动保存</span>
+                    <span class="tag"><i class="ri-lock-line"></i>数据安全保护</span>
+                    <span class="tag"><i class="ri-magic-line"></i>译文内容由AI生成</span>
+                </div>
+            </div>
+            <div class="toolbar-center">
+                <div class="font-group">
+                    <button class="font-group-btn" id="fontIncrease" title="放大字体">A<sup>+</sup></button>
+                    <div class="font-group-divider"></div>
+                    <button class="font-group-btn" id="fontDecrease" title="缩小字体">A<sup>-</sup></button>
+                </div>
+            </div>
+            <div class="toolbar-right">
+                <button class="toolbar-btn export-btn" id="exportBtn" title="导出">
+                    <i class="ri-download-line"></i> 导出
+                </button>
+                <button class="toolbar-btn window-btn" id="minimizeBtn" title="最小化">
+                    <i class="ri-subtract-line"></i>
+                </button>
+                <button class="toolbar-btn window-btn" id="maximizeBtn" title="最大化">
+                    <i class="ri-fullscreen-line"></i>
+                </button>
+                <button class="toolbar-btn window-btn close" id="closeBtn" title="关闭">
+                    <i class="ri-close-line"></i>
+                </button>
+            </div>
+        </div>
+
+        <!-- 主体内容 -->
+        <div class="detail-body">
+            <!-- 左侧原文区 -->
+            <div class="panel source-panel" id="sourcePanel">
+                <div class="panel-header">
+                    <span class="panel-label">原文</span>
+                </div>
+                <div class="panel-content" id="sourceContent">
+                    <!-- 动态填充 -->
+                </div>
+                <div class="audio-bar" id="sourceAudioBar">
+                    <button class="audio-play-btn" id="sourcePlayBtn"><i class="ri-play-fill"></i></button>
+                    <div class="audio-progress">
+                        <div class="audio-progress-fill" id="sourceProgressFill"></div>
+                    </div>
+                    <span class="audio-time" id="sourceAudioTime">00:00 / 00:00</span>
+                </div>
+            </div>
+
+            <!-- 可拖拽分隔线 -->
+            <div class="resizer" id="resizer"></div>
+
+            <!-- 右侧译文区 -->
+            <div class="panel target-panel" id="targetPanel">
+                <div class="panel-header">
+                    <span class="panel-label">译文</span>
+                </div>
+                <div class="panel-content" id="targetContent">
+                    <!-- 动态填充 -->
+                </div>
+                <div class="audio-bar" id="targetAudioBar">
+                    <button class="audio-play-btn" id="targetPlayBtn"><i class="ri-play-fill"></i></button>
+                    <div class="audio-progress">
+                        <div class="audio-progress-fill" id="targetProgressFill"></div>
+                    </div>
+                    <span class="audio-time" id="targetAudioTime">00:00 / 00:00</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- 右侧浮动功能区 -->
+        <div class="float-sidebar" id="floatSidebar">
+            <div class="sidebar-tabs">
+                <button class="sidebar-tab active" data-tab="translation" id="tabTranslation">
+                    <i class="ri-translate-2"></i>
+                    <span>翻译</span>
+                </button>
+                <button class="sidebar-tab" data-tab="notes" id="tabNotes">
+                    <i class="ri-sticky-note-line"></i>
+                    <span>笔记</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="./js/detail.js" type="module"></script>
+</body>
+</html>

@@ -1,44 +1,3 @@
-/**
- * 工具函数
- */
-
-/**
- * 设置状态（底部状态栏已移除，打印到控制台）
- */
-export function setStatus(text, state) {
-    console.log(`[状态] ${text}`);
-}
-
-/**
- * 重采样
- */
-export function resample(input, fromRate, toRate) {
-    if (fromRate === toRate) return new Float32Array(input);
-    const ratio = fromRate / toRate;
-    const outLen = Math.floor(input.length / ratio);
-    const output = new Float32Array(outLen);
-    for (let i = 0; i < outLen; i++) {
-        const srcIdx = i * ratio;
-        const srcIdxFloor = Math.floor(srcIdx);
-        const frac = srcIdx - srcIdxFloor;
-        const a = input[srcIdxFloor] || 0;
-        const b = input[srcIdxFloor + 1] || 0;
-        output[i] = a + (b - a) * frac;
-    }
-    return output;
-}
-
-/**
- * Float32 → Int16 (PCM)
- */
-export function float32ToInt16(float32) {
-    const int16 = new Int16Array(float32.length);
-    for (let i = 0; i < float32.length; i++) {
-        const s = Math.max(-1, Math.min(1, float32[i]));
-        int16[i] = s < 0 ? s * 0x8000 : s * 0x7FFF;
-    }
-    return int16;
-}
 
 /**
  * 更新音量格子
@@ -61,7 +20,7 @@ export function updateVolumeBars(level, container) {
 /**
  * 生成音量格子
  */
-export function buildVolumeBars(container, count, className) {
+export function buildVolumeBars(container, count, className = 'vol-bar') {
     container.innerHTML = "";
     for (let i = 0; i < count; i++) {
         const bar = document.createElement("div");

@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.min.css">
     
     <link rel="stylesheet" href="./css/style.css">
+    <link rel="stylesheet" href="./css/session.css">
 </head>
 
 <body>
@@ -18,12 +19,12 @@
                 <button class="title-bar-nav" id="homeBtn" title="返回主页">
                     <i class="ri-arrow-left-s-line"></i>
                 </button>
-                <span class="session-title" id="sessionTitle">2026年06月07日_记录_1</span>
-                <span class="tag tag-green"><i class="ri-shield-check-line"></i> 会议记录自动保存</span>
+                <span class="session-title" id="sessionTitle">未命名同传</span>
+                <span class="tag tag-green" id="sessionStatus">准备就绪</span>
                 <span class="tag tag-gray">翻译内容由AI生成</span>
             </div>
             <div class="title-bar-right">
-                <span class="timer" id="timerDisplay">00:19:48</span>
+                <span class="timer" id="timerDisplay">00:00:00</span>
                 <span class="user-icon"><i class="ri-user-smile-line"></i></span>
                 <button class="title-bar-btn" id="minimizeBtn" title="最小化">
                     <i class="ri-subtract-line"></i>
@@ -42,32 +43,20 @@
             <div class="toolbar-left">
                 <div class="dropdown model-dropdown" id="modelDropdown">
                     <img src="../resources/icons/千问logo.png" alt="千问" class="model-logo">
-                    <span>千问大模型</span>
-                    <i class="ri-arrow-down-s-line"></i>
-                    <div class="dropdown-menu model-menu" id="modelMenu">
-                        <div class="model-item active" data-model="qwen">
-                            <img src="../resources/icons/千问logo.png" alt="千问" class="model-item-logo">
-                            <div class="model-item-info">
-                                <div class="model-item-name">千问大模型</div>
-                                <div class="model-item-desc">多语种 听同传 效果佳</div>
-                            </div>
-                            <i class="ri-check-line model-check"></i>
-                        </div>
-                    </div>
+                    <span>Qwen 3.8 同传</span>
                 </div>
                 <div class="lang-switch" id="langSwitch">
                     <!-- 源语言自定义下拉 -->
                     <div class="custom-select" id="sourceLangDropdown">
                         <div class="custom-select-trigger" id="sourceLangTrigger">
                             <span class="lang-icon"><i class="ri-global-line"></i></span>
-                            <span class="lang-name" id="sourceLangName">英语</span>
-                            <span class="lang-native" id="sourceLangNative">English</span>
-                            <i class="ri-arrow-up-s-line arrow"></i>
+                            <span class="lang-name" id="sourceLangName">自动识别</span>
+                            <span class="lang-native" id="sourceLangNative">Auto</span>
                         </div>
                         <div class="custom-select-menu" id="sourceLangMenu"></div>
                     </div>
 
-                    <button class="lang-swap-btn" id="langSwapBtn" title="交换语言">
+                    <button class="lang-swap-btn" id="langSwapBtn" title="源语言自动识别" hidden>
                         <i class="ri-arrow-left-right-line"></i>
                     </button>
 
@@ -110,11 +99,13 @@
             </div>
         </div>
 
-         <!-- AI音频播放按钮（浮动在翻译区域左侧） -->
-        <button class="ai-audio-play-btn" id="aiAudioPlayBtn" title="播放AI音频">
-            <i class="ri-play-fill"></i>
-        </button>
-
+        <div class="session-status-row">
+            <div class="session-feedback" id="sessionFeedback" role="status">Qwen 3.8 自动识别源语言，并按本次会话的说话人分段。</div>
+            <div class="session-actions" id="sessionActions" hidden>
+                <button id="viewSavedBtn" type="button">查看记录</button>
+                <button id="newSessionBtn" type="button">再次开始同传</button>
+            </div>
+        </div>
         <!-- 热词配置弹窗（默认隐藏） -->
         <div class="modal-overlay" id="hotwordModalOverlay">
             <div class="modal hotword-modal" id="hotwordModal">
@@ -124,6 +115,7 @@
                 </div>
                 <div class="modal-body">
                     <p class="hotword-desc">输入行业专属术语或人名，可提升翻译准确率</p>
+                    <p id="hotwordError" role="alert"></p>
                     <div class="hotword-header-row">
                         <span class="hotword-header-cell">原文 - <span id="hotwordSourceLang">英语</span></span>
                         <span class="hotword-header-cell">译文 - <span id="hotwordTargetLang">中文</span></span>
@@ -190,9 +182,9 @@
                                 </div>
                                 <div class="asp-body">
                                     <label class="asp-item" id="aspSystemItem">
-                                        <input type="checkbox" id="aspSystemAudio" checked>
+                                        <input type="checkbox" id="aspSystemAudio">
                                         <span class="asp-check"><i class="ri-check-line"></i></span>
-                                        <span class="asp-text">电脑声音 (Realtek(R) Audio)</span>
+                                        <span class="asp-text">电脑声音</span>
                                     </label>
                                     <label class="asp-item" id="aspMicItem">
                                         <input type="checkbox" id="aspMicAudio" checked>
@@ -208,13 +200,15 @@
                     <!-- 原文区域 -->
                     <div class="source-area" id="sourceArea">
                         <div class="source-text" id="sourceText"></div>
+                        <i class="ri-volume-up-line" id="sourceSpeakerIcon" style="display:none;"></i>
                     </div>
 
                     <!-- 译文区域 -->
                     <div class="target-area" id="targetArea">
-                       
                         <div class="target-text" id="targetText"></div>
+                        <i class="ri-volume-up-line" id="targetSpeakerIcon" style="display:none;"></i>
                     </div>
+
                 </div>
             </div>
 
@@ -236,11 +230,11 @@
             <button class="fc-btn fc-pause" id="fcPauseBtn">
                 <i class="ri-pause-fill"></i>
             </button>
+            <button class="fc-btn fc-restart" id="fcRestartBtn" title="重新开始">
+                <i class="ri-restart-line"></i>
+            </button>
             <span class="fc-timer" id="fcTimer">00:00:00</span>
             <div class="fc-volume-bars" id="fcVolumeBars"></div>
-            <button class="fc-btn fc-audio-play" id="fcAudioPlayBtn" title="播放AI音频">
-                <i class="ri-volume-up-line"></i>
-            </button>
             <div class="fc-source" id="fcSourceBtn">
                 <span id="fcSourceLabel">混合声源</span>
                 <i class="ri-arrow-up-s-line" id="fcSourceArrow"></i>
@@ -251,7 +245,7 @@
                     </div>
                     <div class="fc-sp-body">
                         <label class="fc-sp-item" id="fcSpSystemItem">
-                            <input type="checkbox" id="fcSpSystemAudio" checked>
+                            <input type="checkbox" id="fcSpSystemAudio">
                             <span class="fc-sp-check"><i class="ri-check-line"></i></span>
                             <span class="fc-sp-text">电脑声音</span>
                         </label>
@@ -282,6 +276,24 @@
                 <div class="modal-footer">
                     <button class="modal-btn modal-btn-secondary" id="stopConfirmCancel">取消</button>
                     <button class="modal-btn modal-btn-primary" id="stopConfirmOk">确定</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 重新开始确认弹窗 -->
+        <div class="modal-overlay" id="restartConfirmOverlay">
+            <div class="modal stop-confirm-modal">
+                <div class="modal-header">
+                    <h3>重新开始</h3>
+                    <button class="modal-close" id="restartConfirmClose">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="stop-confirm-text">确定要重新开始本场同传？</p>
+                    <p class="stop-confirm-hint">当前内容将被清空，可重新设置并传译</p>
+                </div>
+                <div class="modal-footer">
+                    <button class="modal-btn modal-btn-secondary" id="restartConfirmCancel">取消</button>
+                    <button class="modal-btn modal-btn-primary" id="restartConfirmOk">确定</button>
                 </div>
             </div>
         </div>

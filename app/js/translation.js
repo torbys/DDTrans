@@ -1,520 +1,133 @@
-/**
- * 翻译核心逻辑（WebSocket 通信 + 音频发送）
- */
-
+import { TEXT_ONLY_LANGS } from './config.js';
 import * as dom from './dom.js';
 import * as state from './state.js';
 import * as renderer from './renderer.js';
 import * as view from './view.js';
 import * as lang from './lang.js';
-import { TARGET_SAMPLE_RATE, BUFFER_SIZE } from './config.js';
-import { setStatus, resample, float32ToInt16, updateVolumeBars } from './utils.js';
-import { getAudioStreamBySelection } from './audio-capture.js';
+import { updateVolumeBars } from './utils.js';
+import { mediaCommand, getMediaSnapshot, onMediaEvent } from './media-client.js';
 
-// 音频播放队列
-let audioChunks = [];
-
-export async function toggleTranslation() {
-    if (state.isRunning) {
-        stopTranslation();
-        return;
+let phase = 'idle', sessionId = null, replay, replayDone;
+let replayGeneration = 0, sourceSwitching = false;
+const segments = new Map();
+const notes = () => document.querySelector('.notes-textarea');
+function lockSourceControls(locked) {
+    for (const control of [dom.aspSystemAudio, dom.aspMicAudio, dom.fcSpSystemAudio, dom.fcSpMicAudio, dom.audioSourceBtn, dom.fcSourceBtn]) {
+        control.disabled = locked; control.setAttribute('aria-disabled', String(locked));
     }
-
-    // 检查是否至少选择了一个声源
-    if (!dom.aspSystemAudio.checked && !dom.aspMicAudio.checked) {
-        setStatus("请至少选择一个输入声源", "error");
-        dom.audioSourcePanel.classList.add("show");
-        setTimeout(() => {
-            dom.audioSourcePanel.classList.remove("show");
-        }, 2000);
-        return;
-    }
-
-    await startTranslation();
+    dom.aspMicSub.querySelectorAll('button').forEach(button => { button.disabled = locked || !state.useMicAudio; });
 }
-
-async function startTranslation() {
+export function showFeedback(message, kind = 'info') {
+    const element = document.getElementById('sessionFeedback');
+    element.textContent = message; element.dataset.kind = kind;
+    element.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+}
+function setPhase(next) {
+    phase = next;
+    const busy = ['starting', 'pausing', 'stopping'].includes(next);
+    notes().readOnly = busy;
+    lockSourceControls(busy || sourceSwitching);
+    state.setIsRunning(!['idle', 'stopped', 'failed'].includes(next));
+    renderer.setSessionState(next); lang.setLangDropdownDisabled(state.isRunning);
+    dom.aiVoiceBtn.disabled = state.isRunning; dom.hotwordBtn.disabled = state.isRunning;
+    dom.startBtn.disabled = busy; dom.fcPauseBtn.disabled = busy;
+    dom.fcStopBtn.disabled = next === 'stopping'; dom.fcRestartBtn.disabled = busy;
+    dom.fcPauseBtn.setAttribute('aria-label', next === 'paused' ? '恢复同传' : '暂停同传');
+    dom.fcPauseBtn.innerHTML = next === 'paused' ? '<i class="ri-play-fill"></i>' : '<i class="ri-pause-fill"></i>';
+    dom.floatingControls.classList.toggle('show', state.isRunning && next !== 'starting');
+    const labels = { idle: '准备就绪', starting: '正在连接', running: '同传中 · 实时保存', pausing: '正在暂停', paused: '已关闭收音 · 内容已保存', stopping: '正在接收尾段并保存', stopped: '已保存', failed: '连接中断 · 查看历史记录' };
+    document.getElementById('sessionStatus').textContent = labels[next] || next;
+    document.getElementById('sessionActions').hidden = !['stopped', 'failed'].includes(next);
+    dom.sourceSpeakerIcon.style.display = sessionId && ['paused', 'stopped'].includes(next) ? 'inline' : 'none';
+    dom.targetSpeakerIcon.style.display = state.aiVoiceEnabled && ['paused', 'stopped'].includes(next) ? 'inline' : 'none';
+    document.dispatchEvent(new CustomEvent('session-state', { detail: next }));
+}
+function updateClock(ms) {
+    const seconds = Math.floor(ms / 1000);
+    const text = [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60].map(n => String(n).padStart(2, '0')).join(':');
+    dom.fcTimer.textContent = text; document.getElementById('timerDisplay').textContent = text;
+}
+function applySnapshot(snapshot) {
+    if (snapshot.sessionId !== sessionId || snapshot.phase === 'starting') {
+        sessionId = snapshot.sessionId; segments.clear(); renderer.clearText();
+    }
+    if (snapshot.config && (snapshot.sessionId || state.isRunning || snapshot.phase === 'starting')) {
+        const config = snapshot.config;
+        state.setMeetingName(config.meetingName); dom.sessionTitle.textContent = config.meetingName;
+        state.setCurrentTargetLang(config.targetLanguage); lang.updateLangDisplay();
+        state.setUseSystemAudio(config.useSystemAudio); state.setUseMicAudio(config.useMicAudio);
+        state.setSelectedMicDeviceId(config.deviceId); state.setAiVoiceEnabled(config.audioEnabled);
+        dom.aiVoiceBtn.setAttribute('aria-pressed', String(config.audioEnabled));
+        dom.aspSystemAudio.checked = dom.fcSpSystemAudio.checked = config.useSystemAudio;
+        dom.aspMicAudio.checked = dom.fcSpMicAudio.checked = config.useMicAudio;
+        dom.fcSourceLabel.textContent = config.useSystemAudio && config.useMicAudio ? '混合声源' : config.useSystemAudio ? '电脑声音' : '麦克风';
+    }
+    if (snapshot.ttsEnabled !== undefined && !TEXT_ONLY_LANGS.includes(state.currentTargetLang)) {
+        state.setAiVoiceEnabled(snapshot.ttsEnabled);
+        dom.aiVoiceBtn.setAttribute('aria-pressed', String(snapshot.ttsEnabled));
+    }
+    if (snapshot.segments) for (const segment of snapshot.segments) { segments.set(segment.segment_key, segment); renderer.upsertSegment(segment); }
+    if (segments.size || snapshot.phase === 'running') { dom.emptyState.style.display = 'none'; view.applyViewMode(); }
+    updateClock(snapshot.elapsedMs || 0); setPhase(snapshot.phase);
+    if (snapshot.feedback) showFeedback(snapshot.feedback.message, snapshot.feedback.kind);
+}
+const unsubscribe = onMediaEvent(event => {
+    if (event.type === 'snapshot') applySnapshot(event.snapshot);
+    if (event.type === 'segment') { segments.set(event.segment.segment_key, event.segment); renderer.upsertSegment(event.segment); }
+    if (event.type === 'feedback') showFeedback(event.message, event.kind);
+    if (event.type === 'clock') updateClock(event.elapsedMs);
+    if (event.type === 'level') updateVolumeBars(event.level * 2, dom.fcVolumeBars);
+});
+void getMediaSnapshot().then(snapshot => {
+    if (!['idle', 'stopped', 'failed'].includes(snapshot.phase)) { applySnapshot(snapshot); notes().value = snapshot.note || ''; }
+}).catch(error => showFeedback(error.message, 'error'));
+export async function startTranslation() {
+    if (state.isRunning) return;
+    const draft = sessionId ? '' : notes().value;
+    stopReplay(); notes().value = draft;
     try {
-        setStatus("连接中...", "connecting");
-        dom.startBtn.disabled = true;
-        dom.startBtn.innerHTML = '<i class="ri-loader-4-line ri-spin"></i> 启动中...';
-
-        // 同传过程中禁用语言选择、交换按钮、热词和AI语音
-        lang.setLangDropdownDisabled(true);
-        dom.langSwapBtn.disabled = true;
-        dom.hotwordBtn.disabled = true;
-        dom.aiVoiceBtn.disabled = true;
-
-        // 1. 获取音频流（根据用户选择）
-        const finalStream = await getAudioStreamBySelection();
-        if (!finalStream) {
-            throw new Error("无法获取音频流");
-        }
-
-        state.setMicrophoneStream(finalStream);
-        console.log("[前端] 音频流已获取");
-
-        // 2. 创建 AudioContext
-        state.setAudioContext(new (window.AudioContext || window.webkitAudioContext)());
-        const sourceSampleRate = state.audioContext.sampleRate;
-        console.log(`[前端] AudioContext 采样率: ${sourceSampleRate}Hz (目标: ${TARGET_SAMPLE_RATE}Hz)`);
-
-        // 3. 创建 ScriptProcessorNode 采集原始 PCM
-        state.setScriptProcessor(state.audioContext.createScriptProcessor(BUFFER_SIZE, 1, 1));
-        const source = state.audioContext.createMediaStreamSource(state.microphoneStream);
-        source.connect(state.scriptProcessor);
-        state.scriptProcessor.connect(state.audioContext.destination);
-
-        // 4. 建立 WebSocket 连接
-        // Electron 中 location.protocol 是 file:，需要硬编码后端地址
-        const wsUrl = (location.protocol === "file:")
-            ? "ws://localhost:1145/ws/translate"
-            : `${location.protocol === "https:" ? "wss:" : "ws:"}//${location.host}/ws/translate`;
-        state.setWs(new WebSocket(wsUrl));
-        state.ws.binaryType = "arraybuffer";
-
-        state.ws.onopen = () => {
-            console.log("[前端] WebSocket 已连接");
-
-            const config = {
-                type: "start",
-                source_language: state.currentSourceLang,
-                target_language: state.currentTargetLang,
-                audio_enabled: state.aiVoiceEnabled,
-            };
-
-            // 添加热词配置
-            if (state.hotwords && state.hotwords.length > 0) {
-                const phrases = {};
-                state.hotwords.forEach((hw) => {
-                    if (hw.source && hw.target) {
-                        phrases[hw.source] = hw.target;
-                    }
-                });
-                if (Object.keys(phrases).length > 0) {
-                    config.corpus = { phrases };
-                }
-            }
-
-            console.log("[前端] 发送配置:", JSON.stringify(config, null, 2));
-            state.ws.send(JSON.stringify(config));
-        };
-
-        state.ws.onmessage = (event) => {
-            const msg = JSON.parse(event.data);
-            console.log("[前端] 收到消息:", msg.type, msg);
-            handleServerMessage(msg);
-        };
-
-        state.ws.onerror = (err) => {
-            console.error("[前端] WebSocket 错误:", err);
-            setStatus("连接错误", "error");
-        };
-
-        state.ws.onclose = () => {
-            console.log("[前端] WebSocket 已关闭");
-            if (state.isRunning) stopTranslation();
-        };
-
-        // 5. ScriptProcessor.onaudioprocess - 音频采集 + 重采样 + 发送
-        state.scriptProcessor.onaudioprocess = (event) => {
-            if (!state.isRunning || !state.ws || state.ws.readyState !== WebSocket.OPEN) return;
-            // 注意：暂停时仍然采集但不发送，保持音频上下文活跃
-            if (state.isPaused) {
-                // 暂停时只更新音量指示（显示为0）
-                updateVolumeBars(0, dom.fcVolumeBars);
-                return;
-            }
-
-            const inputData = event.inputBuffer.getChannelData(0); // Float32Array
-            const inputSampleRate = state.audioContext.sampleRate;
-
-            // 重采样到 16kHz
-            const resampled = resample(inputData, inputSampleRate, TARGET_SAMPLE_RATE);
-
-            // Float32 → Int16 (PCM)
-            const pcm = float32ToInt16(resampled);
-
-            // 发送 raw PCM bytes
-            state.ws.send(pcm.buffer);
-
-            // 更新音量指示
-            let rms = 0;
-            for (let i = 0; i < resampled.length; i++) {
-                rms += resampled[i] * resampled[i];
-            }
-            rms = Math.sqrt(rms / resampled.length);
-            updateVolumeBars(rms * 2, dom.fcVolumeBars);
-        };
-
-        // 显示翻译区域，隐藏空状态
-        dom.emptyState.style.display = "none";
-        view.applyViewMode();
-
-        // 显示浮动控制条
-        dom.floatingControls.classList.add("show");
-
-        // 同步声源状态到底部控制条面板
-        if (dom.fcSpSystemAudio) dom.fcSpSystemAudio.checked = state.useSystemAudio;
-        if (dom.fcSpMicAudio) dom.fcSpMicAudio.checked = state.useMicAudio;
-        if (dom.fcSourceLabel) {
-            if (state.useSystemAudio && state.useMicAudio) {
-                dom.fcSourceLabel.textContent = "混合声源";
-            } else if (state.useSystemAudio) {
-                dom.fcSourceLabel.textContent = "电脑声音";
-            } else if (state.useMicAudio) {
-                dom.fcSourceLabel.textContent = "麦克风";
-            } else {
-                dom.fcSourceLabel.textContent = "请选择声源";
-            }
-        }
-
-        // 更新会话标题
-        const now = new Date();
-        dom.sessionTitle.textContent = `${now.getFullYear()}年${String(now.getMonth()+1).padStart(2,'0')}月${String(now.getDate()).padStart(2,'0')}日_记录`;
-
-        state.setIsRunning(true);
-        state.setIsPaused(false);
-        dom.startBtn.disabled = false;
-        dom.startBtn.innerHTML = '<i class="ri-stop-circle-line"></i> 停止同传';
-        dom.startBtn.style.background = "#ff4d4f";
-        setStatus("翻译中...", "active");
-
-        // 重置AI音频
-        audioChunks = [];
-        state.setAudioBlobs([]);
-        state.setCurrentAudioIndex(0);
-        if (dom.aiAudioPlayBtn) dom.aiAudioPlayBtn.style.display = "none";  // 新增
-        dom.fcAudioPlayBtn.style.display = "none";
-        dom.fcAudioPlayBtn.innerHTML = '<i class="ri-volume-up-line"></i>';
-
-        // 启动计时器
-        state.setStartTime(Date.now());
-        state.setTotalPaused(0);
-        state.setTimerInterval(setInterval(updateTimer, 100));
-
-    } catch (err) {
-        console.error("[前端] 启动失败:", err);
-        if (err.name === "NotAllowedError") {
-            setStatus("请允许麦克风权限", "error");
-        } else {
-            setStatus("启动失败: " + err.message, "error");
-        }
-        dom.startBtn.disabled = false;
-        dom.startBtn.innerHTML = '<i class="ri-mic-line"></i> 开始同传';
-        dom.startBtn.style.background = "";
-        cleanup();
+        applySnapshot(await mediaCommand('start', { meetingName: state.meetingName, targetLanguage: state.currentTargetLang, useSystemAudio: state.useSystemAudio, useMicAudio: state.useMicAudio, deviceId: state.selectedMicDeviceId, audioEnabled: state.aiVoiceEnabled, hotwords: state.hotwords }));
+        if (draft) await flushNote();
     }
+    catch (error) { showFeedback(error.message, 'error'); throw error; }
 }
-
-export function togglePause() {
-    if (!state.isRunning) return;
-    const newPaused = !state.isPaused;
-
-    if (newPaused) {
-        // 暂停时：有音频才显示播放按钮
-        if (state.audioBlobs.length > 0) {
-            dom.aiAudioPlayBtn.style.display = "flex";
-        }
-    } else {
-        // 恢复时：强制隐藏
-        dom.aiAudioPlayBtn.style.display = "none";
-        
-        // 如果正在播放，顺便停掉并重置图标
-        if (state.isPlayingAudio) {
-            if (state.audioSource) {
-                try { state.audioSource.stop(); } catch (e) {}
-                state.setAudioSource(null);
-            }
-            if (state.audioCtx && state.audioCtx.state !== "closed") {
-                try { state.audioCtx.close(); } catch (e) {}
-                state.setAudioCtx(null);
-            }
-            state.setIsPlayingAudio(false);
-            state.setCurrentAudioIndex(0);
-            
-            // 重置按钮图标
-            if (dom.aiAudioPlayBtn) {
-                dom.aiAudioPlayBtn.classList.remove("playing");
-                dom.aiAudioPlayBtn.innerHTML = '<i class="ri-play-fill" style="color: #000; font-size: 16px;"></i>';
-                dom.aiAudioPlayBtn.title = "播放AI音频";
-            }
-            dom.fcAudioPlayBtn.innerHTML = '<i class="ri-volume-up-line"></i>';
-            dom.fcAudioPlayBtn.classList.remove("playing");
-        }
-    }
-
-    if (newPaused) {
-        // 发送暂停信号给后端
-        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-            state.ws.send(JSON.stringify({ type: "pause" }));
-        }
-        state.setPausedTime(Date.now());
-        dom.fcPauseBtn.classList.add("paused");
-        dom.fcPauseBtn.innerHTML = '<i class="ri-play-fill"></i>';
-        setStatus("已暂停", "paused");
-        console.log("[前端] 发送暂停信号");
-    } else {
-        // 发送恢复信号给后端
-        if (state.ws && state.ws.readyState === WebSocket.OPEN) {
-            state.ws.send(JSON.stringify({ type: "resume" }));
-        }
-        state.setTotalPaused(state.totalPaused + Date.now() - state.pausedTime);
-        dom.fcPauseBtn.classList.remove("paused");
-        dom.fcPauseBtn.innerHTML = '<i class="ri-pause-fill"></i>';
-        setStatus("翻译中...", "active");
-        console.log("[前端] 发送恢复信号");
-        // 恢复采集时停止AI音频播放并隐藏播放按钮
-        if (state.isPlayingAudio) {
-            if (state.audioSource) {
-                try { state.audioSource.stop(); } catch (e) {}
-                state.setAudioSource(null);
-            }
-            if (state.audioCtx && state.audioCtx.state !== "closed") {
-                try { state.audioCtx.close(); } catch (e) {}
-                state.setAudioCtx(null);
-            }
-            state.setIsPlayingAudio(false);
-            state.setCurrentAudioIndex(0);
-            dom.fcAudioPlayBtn.innerHTML = '<i class="ri-volume-up-line"></i>';
-            dom.fcAudioPlayBtn.classList.remove("playing");
-        }
-        dom.fcAudioPlayBtn.style.display = "none";
-    }
-    state.setIsPaused(newPaused);
+export async function toggleTranslation() { if (state.isRunning) await stopTranslation(); else await startTranslation(); }
+export async function togglePause() {
+    if (!['running', 'paused'].includes(phase)) return;
+    stopReplay(); applySnapshot(await mediaCommand(phase === 'running' ? 'pause' : 'resume'));
 }
-
-export function stopTranslation() {
-    if (!state.isRunning) return;
-    state.setIsRunning(false);
-    state.setIsPaused(false);
-
-    console.log("[前端] 停止翻译");
-    setStatus("就绪", "idle");
-
-    dom.startBtn.innerHTML = '<i class="ri-mic-line"></i> 开始同传';
-    dom.startBtn.style.background = "";
-
-    // 隐藏浮动控制条
-    dom.floatingControls.classList.remove("show");
-    dom.fcPauseBtn.classList.remove("paused");
-    dom.fcPauseBtn.innerHTML = '<i class="ri-pause-fill"></i>';
-
-    // 停止AI音频播放
-    if (state.isPlayingAudio) {
-        if (state.audioSource) {
-            try { state.audioSource.stop(); } catch (e) {}
-            state.setAudioSource(null);
-        }
-        if (state.audioCtx && state.audioCtx.state !== "closed") {
-            try { state.audioCtx.close(); } catch (e) {}
-            state.setAudioCtx(null);
-        }
-        state.setIsPlayingAudio(false);
-        state.setCurrentAudioIndex(0);
-    }
-    if (dom.aiAudioPlayBtn) dom.aiAudioPlayBtn.style.display = "flex";
-
-    if (state.timerInterval) {
-        clearInterval(state.timerInterval);
-        state.setTimerInterval(null);
-    }
-
-    cleanup();
-
-    // 回到初始界面：显示空状态，隐藏翻译区域
-    dom.emptyState.style.display = "flex";
-    dom.sourceArea.classList.remove("show");
-    dom.targetArea.classList.remove("show");
-
-    // 清空文本内容
-    renderer.clearText();
-
-    // 同传结束后恢复语言选择、交换按钮、热词和AI语音
-    lang.setLangDropdownDisabled(false);
-    dom.langSwapBtn.disabled = false;
-    dom.hotwordBtn.disabled = false;
-    dom.aiVoiceBtn.disabled = false;
+export function flushNote() {
+    if (!sessionId || !state.isRunning) return Promise.resolve();
+    return mediaCommand('save-note', { content: notes().value });
 }
-
-/**
- * 动态切换音频输入源（采集过程中使用）
- */
+export function scheduleNoteSave() {
+    if (sessionId && state.isRunning) void mediaCommand('save-note', { content: notes().value, defer: true }).catch(error => showFeedback(error.message, 'error'));
+}
+export async function stopTranslation() {
+    await flushNote(); stopReplay(); const snapshot = await mediaCommand('stop'); applySnapshot(snapshot); return snapshot.sessionId;
+}
 export async function switchAudioSource() {
-    if (!state.isRunning || !state.audioContext) return;
-
-    try {
-        console.log("[前端] 切换音频源...");
-
-        // 1. 断开旧的音频连接
-        if (state.scriptProcessor) {
-            state.scriptProcessor.disconnect();
-        }
-
-        // 2. 停止旧的音频流
-        if (state.microphoneStream) {
-            state.microphoneStream.getTracks().forEach((t) => t.stop());
-            state.setMicrophoneStream(null);
-        }
-        if (state.systemAudioStream) {
-            state.systemAudioStream.getTracks().forEach((t) => t.stop());
-            state.setSystemAudioStream(null);
-        }
-        if (state.combinedStream) {
-            state.setCombinedStream(null);
-        }
-
-        // 3. 获取新的音频流
-        const newStream = await getAudioStreamBySelection();
-        if (!newStream) {
-            throw new Error("无法获取新的音频流");
-        }
-
-        state.setMicrophoneStream(newStream);
-        console.log("[前端] 新音频流已获取");
-
-        // 4. 重新连接到 AudioContext
-        const source = state.audioContext.createMediaStreamSource(state.microphoneStream);
-        source.connect(state.scriptProcessor);
-        state.scriptProcessor.connect(state.audioContext.destination);
-
-        console.log("[前端] 音频源切换完成");
-    } catch (err) {
-        console.error("[前端] 切换音频源失败:", err);
-        setStatus("切换声源失败: " + err.message, "error");
-    }
+    dom.fcSourceLabel.textContent = state.useSystemAudio && state.useMicAudio ? '混合声源' : state.useSystemAudio ? '电脑声音' : '麦克风';
+    if (!['running', 'paused'].includes(phase)) return;
+    sourceSwitching = true; lockSourceControls(true); stopReplay();
+    try { applySnapshot(await mediaCommand('switch-source', { useSystemAudio: state.useSystemAudio, useMicAudio: state.useMicAudio, deviceId: state.selectedMicDeviceId })); }
+    finally { sourceSwitching = false; lockSourceControls(['starting', 'pausing', 'stopping'].includes(phase)); }
 }
-
-function cleanup() {
-    if (state.scriptProcessor) {
-        state.scriptProcessor.disconnect();
-        state.setScriptProcessor(null);
+export function stopReplay() { replayGeneration++; if (replay) { replay.pause(); replay.src = ''; replay = null; replayDone?.(); replayDone = null; } }
+export async function playRecording(type) {
+    if (!sessionId || !['paused', 'stopped'].includes(phase)) return;
+    if (replay) { stopReplay(); return; }
+    const generation = ++replayGeneration;
+    const urls = type === 'raw' ? ['/api/sessions/' + sessionId + '/audio?type=raw'] : [...segments.values()].sort((a, b) => a.sequence_order - b.sequence_order).filter(segment => segment.has_tts_audio && segment.status === 'final').map(segment => '/api/audio/' + segment.id + '?type=tts');
+    if (!urls.length) { showFeedback('译音仍在生成，完成后可以回放。'); return; }
+    for (const url of urls) {
+        if (generation !== replayGeneration) return;
+        const audio = new Audio(url); replay = audio;
+        try { await new Promise((resolve, reject) => { replayDone = resolve; audio.onended = resolve; audio.onerror = () => reject(new Error('音频加载失败')); audio.play().catch(reject); }); }
+        catch (error) { if (generation === replayGeneration) showFeedback(error.message, 'error'); break; }
     }
-    if (state.microphoneStream) {
-        state.microphoneStream.getTracks().forEach((t) => t.stop());
-        state.setMicrophoneStream(null);
-    }
-    if (state.systemAudioStream) {
-        state.systemAudioStream.getTracks().forEach((t) => t.stop());
-        state.setSystemAudioStream(null);
-    }
-    if (state.combinedStream) {
-        state.setCombinedStream(null);
-    }
-    if (state.audioContext && state.audioContext.state !== "closed") {
-        state.audioContext.close();
-        state.setAudioContext(null);
-    }
-    if (state.ws) {
-        state.ws.close();
-        state.setWs(null);
-    }
-    console.log("[前端] 清理资源完成");
-    updateVolumeBars(0, dom.fcVolumeBars);
+    if (generation === replayGeneration) { replay = null; replayDone = null; }
 }
-
-function updateTimer() {
-    if (state.isPaused) return;
-    const elapsed = Math.floor((Date.now() - state.startTime - state.totalPaused) / 1000);
-    const h = Math.floor(elapsed / 3600).toString().padStart(2, "0");
-    const m = Math.floor((elapsed % 3600) / 60).toString().padStart(2, "0");
-    const s = (elapsed % 60).toString().padStart(2, "0");
-    dom.fcTimer.textContent = `${h}:${m}:${s}`;
-}
-
-function handleServerMessage(msg) {
-    switch (msg.type) {
-        case "ready":
-            console.log("[前端] 服务端就绪，千问会话已配置");
-            break;
-
-        case "speech_started":
-        case "item_created":
-        case "response_created":
-            renderer.ensureSourceSegment();
-            renderer.ensureTargetSegment();
-            break;
-
-        case "source_text_delta":
-            renderer.updateSourceSegment(msg.confirmed, msg.stash);
-            break;
-
-        case "source_text_final":
-            if (state.currentSourceSegment) {
-                renderer.finalizeSourceSegment(msg.text);
-            }
-            break;
-
-        case "translation_delta":
-            renderer.updateTargetSegment(msg.confirmed, msg.stash);
-            break;
-
-        case "translation_final":
-            if (state.currentTargetSegment) {
-                renderer.finalizeTargetSegment(msg.text);
-            }
-            break;
-
-        case "response_done":
-            console.log("[前端] 一轮响应完成", msg.usage);
-            if (msg.text && state.currentTargetSegment) {
-                renderer.finalizeTargetSegment(msg.text);
-            }
-            break;
-
-        case "audio_delta":
-            // 收集音频数据
-            if (msg.audio) {
-                audioChunks.push(msg.audio);
-            }
-            break;
-
-        case "audio_done":
-            // 一段音频完成，合并为PCM Int16Array数据
-            if (audioChunks.length > 0) {
-                const binary = atob(audioChunks.join(""));
-                const bytes = new Uint8Array(binary.length);
-                for (let i = 0; i < binary.length; i++) {
-                    bytes[i] = binary.charCodeAt(i);
-                }
-                // 直接存储Int16Array，采样率24000Hz（千问输出音频格式）
-                const pcmData = new Int16Array(bytes.buffer);
-                state.audioBlobs.push({ pcm: pcmData, sampleRate: 24000 });
-                audioChunks = [];
-                if (state.isPaused && state.audioBlobs.length > 0) {
-                    if (dom.aiAudioPlayBtn) dom.aiAudioPlayBtn.style.display = "flex";
-                }
-            }
-            break;
-
-        case "session_finished":
-            console.log("[前端] 千问会话段结束（暂停触发）");
-            // 暂停时收到 session.finished，显示AI音频播放按钮
-            if (state.isPaused && state.audioBlobs.length > 0) {
-                if (dom.aiAudioPlayBtn) dom.aiAudioPlayBtn.style.display = "flex";
-            }
-            break;
-
-        case "paused":
-            console.log("[前端] 后端确认已暂停");
-            break;
-
-        case "resumed":
-            console.log("[前端] 后端确认已恢复");
-            break;
-
-        case "session_end":
-            console.log("[前端] 会话结束");
-            stopTranslation();
-            break;
-
-        case "error":
-            console.error("[前端] 服务端错误:", msg.message);
-            setStatus("错误: " + msg.message, "error");
-            break;
-
-        case "connection_closed":
-            console.log("[前端] 连接关闭:", msg.reason);
-            break;
-    }
-}
+export function getSessionId() { return sessionId; }
+export function getSegments() { return [...segments.values()].sort((a, b) => a.sequence_order - b.sequence_order); }
+window.addEventListener('pagehide', () => { unsubscribe(); stopReplay(); });

@@ -1,520 +1,136 @@
-/**
- * AI 同声传译助手 - 前端入口
- *
- * 使用 ES Module 组织代码
- */
-
 import * as dom from './dom.js';
 import * as state from './state.js';
 import * as view from './view.js';
 import * as lang from './lang.js';
 import * as audioSource from './audio-source.js';
-import * as audioTest from './audio-test.js';
 import * as translation from './translation.js';
 import { buildVolumeBars } from './utils.js';
 import { TEXT_ONLY_LANGS } from './config.js';
+import { mediaCommand } from './media-client.js';
 
-// ============ 初始化 ============
-function init() {
-    // 解析 URL 参数
-    const urlParams = new URLSearchParams(window.location.search);
-    const meetingName = urlParams.get("name");
-    const sourceLangParam = urlParams.get("sourceLang");
-    const targetLangParam = urlParams.get("targetLang");
-    const audioDeviceParam = urlParams.get("audioDevice");
-
-    // 应用会议名称
-    if (meetingName) {
-        dom.sessionTitle.textContent = meetingName;
-    }
-
-    // 应用语言设置
-    if (sourceLangParam) {
-        state.setCurrentSourceLang(sourceLangParam);
-    }
-    if (targetLangParam) {
-        state.setCurrentTargetLang(targetLangParam);
-    }
-    lang.updateLangDisplay();
-
-    // 应用音频设备设置
-    if (audioDeviceParam) {
-        state.setSelectedMicDeviceId(audioDeviceParam);
-    }
-
-    // 开始/停止按钮
-    dom.startBtn.addEventListener("click", translation.toggleTranslation);
-
-    // AI语音切换
-    dom.aiVoiceBtn.addEventListener("click", () => {
-        if (dom.aiVoiceBtn.disabled) return;
-        const enabled = !state.aiVoiceEnabled;
-        state.setAiVoiceEnabled(enabled);
-        dom.aiVoiceBtn.setAttribute("aria-pressed", enabled);
-    });
-
-    // AI语音hint tooltip（全局层级，避免被其他元素遮挡）
-    function showAiVoiceTooltip() {
-        if (!dom.aiVoiceHint || !dom.aiVoiceTooltip) return;
-        const rect = dom.aiVoiceHint.getBoundingClientRect();
-        const tooltipWidth = 320;
-        // 计算水平居中位置，确保不超出视口
-        let left = rect.left + rect.width / 2 - tooltipWidth / 2;
-        left = Math.max(10, Math.min(left, window.innerWidth - tooltipWidth - 10));
-        // 显示在图标下方
-        const top = rect.bottom + 8;
-        dom.aiVoiceTooltip.style.left = left + "px";
-        dom.aiVoiceTooltip.style.top = top + "px";
-        dom.aiVoiceTooltip.classList.add("show");
-    }
-    function hideAiVoiceTooltip() {
-        if (dom.aiVoiceTooltip) {
-            dom.aiVoiceTooltip.classList.remove("show");
-        }
-    }
-    if (dom.aiVoiceHint) {
-        dom.aiVoiceHint.addEventListener("mouseenter", showAiVoiceTooltip);
-        dom.aiVoiceHint.addEventListener("mouseleave", hideAiVoiceTooltip);
-    }
-
-    // 检查目标语言是否支持AI语音
-    function checkAiVoiceSupport() {
-        const targetCode = state.currentTargetLang;
-        const isTextOnly = TEXT_ONLY_LANGS.includes(targetCode);
-        if (isTextOnly) {
-            // 禁用AI语音
-            state.setAiVoiceEnabled(false);
-            dom.aiVoiceBtn.setAttribute("aria-pressed", "false");
-            dom.aiVoiceBtn.disabled = true;
-            dom.aiVoiceWrapper.classList.add("disabled");
-        } else {
-            dom.aiVoiceBtn.disabled = false;
-            dom.aiVoiceWrapper.classList.remove("disabled");
-        }
-    }
-    // 初始检查
-    checkAiVoiceSupport();
-
-    // 热词配置弹窗
-    function openHotwordModal() {
-        dom.hotwordModalOverlay.classList.add("show");
-        // 更新列标题语言显示
-        const sourceLangName = dom.sourceLangName.textContent || "英语";
-        const targetLangName = dom.targetLangName.textContent || "中文";
-        const hotwordSourceLang = document.getElementById("hotwordSourceLang");
-        const hotwordTargetLang = document.getElementById("hotwordTargetLang");
-        if (hotwordSourceLang) hotwordSourceLang.textContent = sourceLangName;
-        if (hotwordTargetLang) hotwordTargetLang.textContent = targetLangName;
-        renderHotwordList();
-    }
-    function closeHotwordModal() {
-        dom.hotwordModalOverlay.classList.remove("show");
-    }
-    function renderHotwordList() {
-        dom.hotwordList.innerHTML = "";
-        state.hotwords.forEach((hw, index) => {
-            const row = document.createElement("div");
-            row.className = "hotword-row";
-            row.innerHTML = `
-                <input type="text" class="hotword-input" placeholder="原文" value="${hw.source || ''}">
-                <input type="text" class="hotword-input" placeholder="译文" value="${hw.target || ''}">
-                <button class="hotword-delete" data-index="${index}" title="删除">
-                    <i class="ri-delete-bin-line"></i>
-                </button>
-            `;
-            row.querySelector(".hotword-delete").addEventListener("click", () => {
-                state.hotwords.splice(index, 1);
-                renderHotwordList();
-            });
-            dom.hotwordList.appendChild(row);
-        });
-    }
-    dom.hotwordBtn.addEventListener("click", openHotwordModal);
-    dom.hotwordModalClose.addEventListener("click", closeHotwordModal);
-    dom.hotwordCancel.addEventListener("click", closeHotwordModal);
-    dom.hotwordConfirm.addEventListener("click", () => {
-        const rows = dom.hotwordList.querySelectorAll(".hotword-row");
-        const words = [];
-        rows.forEach((row) => {
-            const inputs = row.querySelectorAll(".hotword-input");
-            const source = inputs[0].value.trim();
-            const target = inputs[1].value.trim();
-            if (source && target) {
-                words.push({ source, target });
-            }
-        });
-        state.setHotwords(words);
-        closeHotwordModal();
-    });
-    dom.hotwordAdd.addEventListener("click", () => {
-        const row = document.createElement("div");
-        row.className = "hotword-row";
-        row.innerHTML = `
-            <input type="text" class="hotword-input" placeholder="原文">
-            <input type="text" class="hotword-input" placeholder="译文">
-            <button class="hotword-delete" title="删除">
-                <i class="ri-delete-bin-line"></i>
-            </button>
-        `;
-        row.querySelector(".hotword-delete").addEventListener("click", () => {
-            row.remove();
-        });
-        dom.hotwordList.appendChild(row);
-    });
-    dom.hotwordModalOverlay.addEventListener("click", (e) => {
-        if (e.target === dom.hotwordModalOverlay) closeHotwordModal();
-    });
-
-    // 布局分区下拉
-    dom.layoutDropdown.addEventListener("click", (e) => {
-        e.stopPropagation();
-        dom.layoutMenu.classList.toggle("show");
-    });
-    document.addEventListener("click", () => {
-        dom.layoutMenu.classList.remove("show");
-    });
-    dom.layoutMenu.addEventListener("click", (e) => {
-        if (e.target.classList.contains("dropdown-item")) {
-            const layout = e.target.dataset.layout;
-            view.setLayout(layout);
-        }
-    });
-
-    // 模型选择下拉
-    dom.modelDropdown.addEventListener("click", (e) => {
-        e.stopPropagation();
-        dom.modelMenu.classList.toggle("show");
-    });
-    document.addEventListener("click", () => {
-        dom.modelMenu.classList.remove("show");
-    });
-
-    // 浮动控制条
-    dom.fcPauseBtn.addEventListener("click", translation.togglePause);
-
-    // 底部声源切换面板
-    function updateFcSourceLabel() {
-        const useSys = dom.fcSpSystemAudio.checked;
-        const useMic = dom.fcSpMicAudio.checked;
-        if (useSys && useMic) {
-            dom.fcSourceLabel.textContent = "混合声源";
-        } else if (useSys) {
-            dom.fcSourceLabel.textContent = "电脑声音";
-        } else if (useMic) {
-            dom.fcSourceLabel.textContent = "麦克风";
-        } else {
-            dom.fcSourceLabel.textContent = "请选择声源";
-        }
-    }
-
-    function syncFcSourceToState() {
-        state.setUseSystemAudio(dom.fcSpSystemAudio.checked);
-        state.setUseMicAudio(dom.fcSpMicAudio.checked);
-        // 同步到开始按钮旁的声源面板
-        dom.aspSystemAudio.checked = dom.fcSpSystemAudio.checked;
-        dom.aspMicAudio.checked = dom.fcSpMicAudio.checked;
-        audioSource.updateAudioSourceLabel();
-    }
-
-    if (dom.fcSourceBtn) {
-        dom.fcSourceBtn.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const isShow = dom.fcSourcePanel.classList.contains("show");
-            if (isShow) {
-                dom.fcSourcePanel.classList.remove("show");
-                dom.fcSourceArrow.classList.remove("ri-arrow-down-s-line");
-                dom.fcSourceArrow.classList.add("ri-arrow-up-s-line");
-            } else {
-                dom.fcSourcePanel.classList.add("show");
-                dom.fcSourceArrow.classList.remove("ri-arrow-up-s-line");
-                dom.fcSourceArrow.classList.add("ri-arrow-down-s-line");
-            }
-        });
-    }
-
-    document.addEventListener("click", () => {
-        if (dom.fcSourcePanel) dom.fcSourcePanel.classList.remove("show");
-        if (dom.fcSourceArrow) {
-            dom.fcSourceArrow.classList.remove("ri-arrow-down-s-line");
-            dom.fcSourceArrow.classList.add("ri-arrow-up-s-line");
-        }
-    });
-
-    if (dom.fcSourcePanel) {
-        dom.fcSourcePanel.addEventListener("click", (e) => {
-            e.stopPropagation();
-        });
-    }
-
-    if (dom.fcSpSystemAudio) {
-        dom.fcSpSystemAudio.addEventListener("change", () => {
-            updateFcSourceLabel();
-            syncFcSourceToState();
-            if (state.isRunning) {
-                translation.switchAudioSource();
-            }
-        });
-    }
-    if (dom.fcSpMicAudio) {
-        dom.fcSpMicAudio.addEventListener("change", () => {
-            updateFcSourceLabel();
-            syncFcSourceToState();
-            if (state.isRunning) {
-                translation.switchAudioSource();
-            }
-        });
-    }
-
-    // 停止按钮打开确认弹窗
-    dom.fcStopBtn.addEventListener("click", () => {
-        dom.stopConfirmOverlay.classList.add("show");
-    });
-
-    // 结束同传确认弹窗
-    dom.stopConfirmClose.addEventListener("click", () => {
-        dom.stopConfirmOverlay.classList.remove("show");
-    });
-    dom.stopConfirmCancel.addEventListener("click", () => {
-        dom.stopConfirmOverlay.classList.remove("show");
-    });
-    dom.stopConfirmOk.addEventListener("click", () => {
-        dom.stopConfirmOverlay.classList.remove("show");
-        translation.stopTranslation();
-        // 返回主界面
-        window.location.href = "./home.html";
-    });
-    dom.stopConfirmOverlay.addEventListener("click", (e) => {
-        if (e.target === dom.stopConfirmOverlay) dom.stopConfirmOverlay.classList.remove("show");
-    });
-
-    // AI音频播放按钮（翻译区域左侧）
-    function updateAiAudioBtnState() {
-        if (!dom.aiAudioPlayBtn) return;
-        if (state.isPlayingAudio) {
-            dom.aiAudioPlayBtn.classList.add("playing");
-            dom.aiAudioPlayBtn.innerHTML = '<i class="ri-pause-fill"></i>';
-            dom.aiAudioPlayBtn.title = "停止播放";
-        } else {
-            dom.aiAudioPlayBtn.classList.remove("playing");
-            dom.aiAudioPlayBtn.innerHTML = '<i class="ri-play-fill"></i>';
-            dom.aiAudioPlayBtn.title = "播放AI音频";
-        }
-    }
-
-    function stopAudioPlayback() {
-        if (state.audioSource) {
-            try { state.audioSource.stop(); } catch (e) {}
-            state.setAudioSource(null);
-        }
-        if (state.audioCtx && state.audioCtx.state !== "closed") {
-            try { state.audioCtx.close(); } catch (e) {}
-            state.setAudioCtx(null);
-        }
-        state.setIsPlayingAudio(false);
-        updateAiAudioBtnState();
-    }
-
-    async function playNextAudioBlob() {
-        if (state.currentAudioIndex >= state.audioBlobs.length) {
-            // 全部播放完毕
-            stopAudioPlayback();
-            state.setCurrentAudioIndex(0);
-            return;
-        }
-
-        const audioData = state.audioBlobs[state.currentAudioIndex];
-        if (!audioData || !audioData.pcm) {
-            state.setCurrentAudioIndex(state.currentAudioIndex + 1);
-            playNextAudioBlob();
-            return;
-        }
-
-        try {
-            // 创建离线音频上下文解码PCM数据
-            const sampleRate = audioData.sampleRate || 24000;
-            const numChannels = 1;
-            const pcmData = audioData.pcm;
-            const length = pcmData.length;
-
-            // 创建AudioBuffer
-            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            state.setAudioCtx(audioCtx);
-            const audioBuffer = audioCtx.createBuffer(numChannels, length, sampleRate);
-            const channelData = audioBuffer.getChannelData(0);
-
-            // Int16 -> Float32 (-1.0 ~ 1.0)
-            for (let i = 0; i < length; i++) {
-                channelData[i] = pcmData[i] / 32768.0;
-            }
-
-            // 创建BufferSource并播放
-            const source = audioCtx.createBufferSource();
-            state.setAudioSource(source);
-            source.buffer = audioBuffer;
-            source.connect(audioCtx.destination);
-
-            source.onended = () => {
-                state.setCurrentAudioIndex(state.currentAudioIndex + 1);
-                playNextAudioBlob();
-            };
-
-            state.setIsPlayingAudio(true);
-            updateAiAudioBtnState();
-
-            source.start(0);
-        } catch (err) {
-            console.error("[前端] 音频播放失败:", err);
-            state.setCurrentAudioIndex(state.currentAudioIndex + 1);
-            playNextAudioBlob();
-        }
-    }
-
-    if (dom.aiAudioPlayBtn) {
-        dom.aiAudioPlayBtn.addEventListener("click", () => {
-            if (state.isPlayingAudio) {
-                stopAudioPlayback();
-            } else {
-                playNextAudioBlob();
-            }
-        });
-    }
-
-    // 生成音量格子
-    buildVolumeBars(dom.fcVolumeBars, 20, "fc-vol-bar");
-
-    // 隐藏翻译区域
-    dom.sourceArea.classList.remove("show");
-    dom.targetArea.classList.remove("show");
-
-    // 字号控制事件
-    dom.increaseFontBtn.addEventListener("click", view.increaseFontSize);
-    dom.decreaseFontBtn.addEventListener("click", view.decreaseFontSize);
-
-    // 视图模式下拉菜单
-    dom.viewModeDropdown.addEventListener("click", (e) => {
-        e.stopPropagation();
-        dom.viewModeMenu.classList.toggle("show");
-    });
-    document.addEventListener("click", () => {
-        dom.viewModeMenu.classList.remove("show");
-    });
-    dom.viewModeMenu.addEventListener("click", (e) => {
-        if (e.target.classList.contains("dropdown-item")) {
-            const mode = e.target.dataset.mode;
-            view.setViewMode(mode);
-        }
-    });
-
-    // 分享字幕下拉菜单
-    if (dom.shareDropdown) {
-        dom.shareDropdown.addEventListener("click", (e) => {
-            e.stopPropagation();
-            dom.shareMenu.classList.toggle("show");
-        });
-    }
-    document.addEventListener("click", () => {
-        if (dom.shareMenu) dom.shareMenu.classList.remove("show");
-    });
-    if (dom.shareMenu) {
-        dom.shareMenu.addEventListener("click", (e) => {
-            if (e.target.classList.contains("dropdown-item")) {
-                const type = e.target.dataset.share;
-                let text = "";
-                if (type === "source") {
-                    text = state.sourceSegments.join("\n");
-                } else if (type === "target") {
-                    text = state.targetSegments.join("\n");
-                }
-                if (text) {
-                    navigator.clipboard.writeText(text).then(() => {
-                        setStatus(type === "source" ? "原文已复制" : "译文已复制", "success");
-                    }).catch(() => {
-                        setStatus("复制失败", "error");
-                    });
-                } else {
-                    setStatus("暂无内容可复制", "error");
-                }
-                dom.shareMenu.classList.remove("show");
-            }
-        });
-    }
-
-    // 初始化自定义语言下拉
-    lang.initLangDropdown("source", dom.sourceLangDropdown, dom.sourceLangTrigger, dom.sourceLangMenu, dom.sourceLangName, dom.sourceLangNative);
-    lang.initLangDropdown("target", dom.targetLangDropdown, dom.targetLangTrigger, dom.targetLangMenu, dom.targetLangName, dom.targetLangNative);
-
-    // 交换语言按钮
-    dom.langSwapBtn.addEventListener("click", () => {
-        lang.swapLanguages();
-        checkAiVoiceSupport();
-    });
-
-    // 监听目标语言变化，检查AI语音支持
-    const targetLangObserver = new MutationObserver(() => {
-        checkAiVoiceSupport();
-    });
-    if (dom.targetLangName) {
-        targetLangObserver.observe(dom.targetLangName, { childList: true });
-    }
-
-    // 音频输入源面板
-    dom.audioSourceBtn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        dom.audioSourcePanel.classList.toggle("show");
-    });
-    document.addEventListener("click", () => {
-        dom.audioSourcePanel.classList.remove("show");
-    });
-    dom.audioSourcePanel.addEventListener("click", (e) => {
-        e.stopPropagation();
-    });
-
-    dom.aspSystemAudio.addEventListener("change", audioSource.updateAudioSourceLabel);
-    dom.aspMicAudio.addEventListener("change", audioSource.updateAudioSourceLabel);
-
-    // 枚举音频设备
-    audioSource.enumerateAudioDevices();
-
-    // 窗口控制按钮（Electron 环境）
-    if (window.electronAPI) {
-        dom.minimizeBtn.addEventListener("click", () => {
-            window.electronAPI.minimizeWindow();
-        });
-        dom.maximizeBtn.addEventListener("click", () => {
-            window.electronAPI.maximizeWindow();
-        });
-        dom.closeBtn.addEventListener("click", () => {
-            window.electronAPI.closeWindow();
-        });
-    }
-
-    // 笔记收起/展开
-    dom.notesToggle.addEventListener("click", () => {
-        dom.notesArea.classList.toggle("collapsed");
-        const isCollapsed = dom.notesArea.classList.contains("collapsed");
-        dom.notesToggle.title = isCollapsed ? "展开笔记" : "收起笔记";
-        dom.notesToggleIcon.className = isCollapsed ? "ri-arrow-left-s-line" : "ri-arrow-right-s-line";
-    });
-
-    // 返回主页按钮
-    dom.homeBtn.addEventListener("click", () => {
-        window.location.href = "./home.html";
-    });
+const run = action => async event => { try { await action(event); } catch (error) { translation.showFeedback(error.message, 'error'); if (dom.hotwordModalOverlay.classList.contains('show')) document.getElementById('hotwordError').textContent = error.message; } };
+const params = new URLSearchParams(location.search);
+state.setMeetingName(params.get('name') || '同传 ' + new Date().toLocaleString('zh-CN'));
+dom.sessionTitle.textContent = state.meetingName;
+if (params.get('targetLang')) state.setCurrentTargetLang(params.get('targetLang'));
+if (params.get('audioDevice')) state.setSelectedMicDeviceId(params.get('audioDevice'));
+try { const saved = JSON.parse(localStorage.getItem('ddtrans.hotwords') || '[]'); if (Array.isArray(saved)) state.setHotwords(saved.filter(word => typeof word.source === 'string' && typeof word.target === 'string').slice(0, 1000)); } catch (_) {}
+lang.updateLangDisplay();
+lang.initLangDropdown('target', dom.targetLangDropdown, dom.targetLangTrigger, dom.targetLangMenu);
+buildVolumeBars(dom.fcVolumeBars, 16);
+audioSource.updateAudioSourceLabel();
+view.applyLayout(); view.updateFontSize();
+state.setAiVoiceEnabled(false);
+dom.aiVoiceBtn.setAttribute('aria-pressed', String(state.aiVoiceEnabled));
+function checkVoiceSupport() {
+    const disabled = TEXT_ONLY_LANGS.includes(state.currentTargetLang) || state.isRunning;
+    if (TEXT_ONLY_LANGS.includes(state.currentTargetLang)) { state.setAiVoiceEnabled(false); dom.aiVoiceBtn.setAttribute('aria-pressed', 'false'); }
+    dom.aiVoiceBtn.disabled = disabled;
+    dom.aiVoiceWrapper.classList.toggle('disabled', TEXT_ONLY_LANGS.includes(state.currentTargetLang));
 }
-
-// 启动
-init();
-
-// 旋转动画样式
-const styleEl = document.createElement("style");
-styleEl.textContent = `
-    @keyframes ri-spin {
-        from { transform: rotate(0deg); }
-        to { transform: rotate(360deg); }
+checkVoiceSupport();
+document.addEventListener('target-language-changed', checkVoiceSupport);
+document.addEventListener('session-state', checkVoiceSupport);
+dom.aiVoiceBtn.addEventListener('click', run(async () => {
+    if (dom.aiVoiceBtn.disabled) return;
+    const enabled = !state.aiVoiceEnabled;
+    state.setAiVoiceEnabled(enabled); dom.aiVoiceBtn.setAttribute('aria-pressed', String(enabled));
+    await mediaCommand('set-tts', { enabled });
+    translation.showFeedback(enabled ? '已开启译音播报，设置会用于下一次开始的同传。' : '已关闭译音播报，下一次开始时仅生成文字字幕。');
+}));
+dom.aiVoiceHint.title = '实时播报译音；支持自身音频隔离的系统可同时采集电脑声音。部分目标语言仅支持文字。';
+dom.startBtn.addEventListener('click', run(translation.toggleTranslation));
+dom.fcPauseBtn.addEventListener('click', run(translation.togglePause));
+dom.sourceSpeakerIcon.addEventListener('click', run(() => translation.playRecording('raw')));
+dom.targetSpeakerIcon.addEventListener('click', run(() => translation.playRecording('tts')));
+for (const [icon, label] of [[dom.sourceSpeakerIcon, '回放原音'], [dom.targetSpeakerIcon, '回放译音']]) {
+    icon.setAttribute('role', 'button'); icon.tabIndex = 0; icon.setAttribute('aria-label', label); icon.title = label;
+    icon.addEventListener('keydown', event => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); icon.click(); } });
+}
+document.querySelector('.notes-textarea').addEventListener('input', translation.scheduleNoteSave);
+document.querySelector('.notes-textarea').addEventListener('blur', run(translation.flushNote));
+dom.notesToggle.addEventListener('click', () => {
+    const collapsed = dom.notesArea.classList.toggle('collapsed'); dom.notesToggle.title = collapsed ? '展开笔记' : '收起笔记';
+    dom.notesToggleIcon.className = collapsed ? 'ri-arrow-left-s-line' : 'ri-arrow-right-s-line';
+});
+function bindModal(overlay, open, close, cancel, confirm, action) {
+    open.addEventListener('click', () => overlay.classList.add('show'));
+    close.addEventListener('click', () => overlay.classList.remove('show'));
+    cancel.addEventListener('click', () => overlay.classList.remove('show'));
+    overlay.addEventListener('click', event => { if (event.target === overlay) overlay.classList.remove('show'); });
+    confirm.addEventListener('click', run(async () => {
+        confirm.disabled = true;
+        try { overlay.classList.remove('show'); await action(); } finally { confirm.disabled = false; }
+    }));
+}
+bindModal(dom.stopConfirmOverlay, dom.fcStopBtn, dom.stopConfirmClose, dom.stopConfirmCancel, dom.stopConfirmOk, translation.stopTranslation);
+bindModal(dom.restartConfirmOverlay, dom.fcRestartBtn, dom.restartConfirmClose, dom.restartConfirmCancel, dom.restartConfirmOk, async () => { await translation.stopTranslation(); await translation.startTranslation(); });
+document.getElementById('newSessionBtn').addEventListener('click', run(translation.startTranslation));
+document.getElementById('viewSavedBtn').addEventListener('click', () => {
+    const id = translation.getSessionId(); if (!id) return;
+    if (window.electronAPI) window.electronAPI.openDetailWindow(id); else location.href = './detail.html?id=' + id;
+});
+dom.homeBtn.addEventListener('click', run(async () => { if (state.isRunning) await translation.stopTranslation(); location.href = './home.html'; }));
+for (const [button, name] of [[dom.minimizeBtn, 'minimizeWindow'], [dom.maximizeBtn, 'maximizeWindow'], [dom.closeBtn, 'closeWindow']]) {
+    button.addEventListener('click', () => window.electronAPI?.[name]());
+    button.setAttribute('aria-label', button.title);
+}
+function dropdown(trigger, menu) {
+    trigger.addEventListener('click', event => { event.stopPropagation(); menu.classList.toggle('show'); });
+    menu.addEventListener('click', event => event.stopPropagation());
+}
+dropdown(dom.viewModeDropdown, dom.viewModeMenu); dropdown(dom.layoutDropdown, dom.layoutMenu); dropdown(dom.shareBtn, dom.shareMenu);
+dom.viewModeMenu.querySelectorAll('[data-mode]').forEach(item => item.addEventListener('click', () => { view.setViewMode(item.dataset.mode); view.applyViewMode(); dom.viewModeMenu.classList.remove('show'); }));
+dom.layoutMenu.querySelectorAll('[data-layout]').forEach(item => item.addEventListener('click', () => { view.setLayout(item.dataset.layout); dom.layoutMenu.classList.remove('show'); }));
+dom.increaseFontBtn.addEventListener('click', view.increaseFontSize); dom.decreaseFontBtn.addEventListener('click', view.decreaseFontSize);
+dom.shareMenu.querySelectorAll('[data-share]').forEach(item => item.addEventListener('click', run(async () => {
+    const field = item.dataset.share === 'source' ? 'source_text' : 'target_text';
+    const text = translation.getSegments().map(segment => (segment.speaker_id == null ? '' : '说话人 ' + segment.speaker_id + '：') + (segment[field] || '')).join('\n\n');
+    if (!text) throw new Error('暂无字幕可复制');
+    await navigator.clipboard.writeText(text); dom.shareMenu.classList.remove('show'); translation.showFeedback('字幕已复制。', 'success');
+})));
+dom.audioSourceBtn.addEventListener('click', run(async event => {
+    if (dom.audioSourceBtn.disabled) return;
+    event.stopPropagation(); dom.audioSourcePanel.classList.toggle('show');
+    if (dom.audioSourcePanel.classList.contains('show')) await audioSource.enumerateAudioDevices();
+}));
+dom.audioSourcePanel.addEventListener('click', event => event.stopPropagation());
+dom.fcSourceBtn.addEventListener('click', event => { event.stopPropagation(); if (!dom.fcSourceBtn.disabled) dom.fcSourcePanel.classList.toggle('show'); });
+dom.fcSourcePanel.addEventListener('click', event => event.stopPropagation());
+async function sourceChanged(event) {
+    const livePanel = event.target === dom.fcSpSystemAudio || event.target === dom.fcSpMicAudio;
+    if (livePanel) { dom.aspSystemAudio.checked = dom.fcSpSystemAudio.checked; dom.aspMicAudio.checked = dom.fcSpMicAudio.checked; }
+    if (state.isRunning && !dom.aspSystemAudio.checked && !dom.aspMicAudio.checked) { event.target.checked = true; if (livePanel) { dom.aspSystemAudio.checked = dom.fcSpSystemAudio.checked; dom.aspMicAudio.checked = dom.fcSpMicAudio.checked; } throw new Error('同传时至少保留一个输入声源'); }
+    audioSource.updateAudioSourceLabel();
+    dom.fcSpSystemAudio.checked = state.useSystemAudio; dom.fcSpMicAudio.checked = state.useMicAudio;
+    await translation.switchAudioSource();
+}
+[dom.aspSystemAudio, dom.aspMicAudio, dom.fcSpSystemAudio, dom.fcSpMicAudio].forEach(input => input.addEventListener('change', run(sourceChanged)));
+dom.aspMicSub.addEventListener('click', run(async event => { if (event.target.closest('[data-device-id]') && state.isRunning) await translation.switchAudioSource(); }));
+function hotwordRow(source = '', target = '') {
+    const row = document.createElement('div'); row.className = 'hotword-row';
+    for (const [value, placeholder] of [[source, '原文'], [target, '指定译文']]) { const input = document.createElement('input'); input.className = 'hotword-input'; input.value = value; input.placeholder = placeholder; input.maxLength = 500; row.append(input); }
+    const remove = document.createElement('button'); remove.type = 'button'; remove.className = 'hotword-delete'; remove.textContent = '×'; remove.setAttribute('aria-label', '删除热词'); remove.addEventListener('click', () => row.remove()); row.append(remove); dom.hotwordList.append(row);
+}
+function closeHotwords() { dom.hotwordModalOverlay.classList.remove('show'); }
+dom.hotwordBtn.addEventListener('click', () => {
+    document.getElementById('hotwordError').textContent = '';
+    dom.hotwordList.replaceChildren(); state.hotwords.forEach(word => hotwordRow(word.source, word.target)); if (!state.hotwords.length) hotwordRow();
+    document.getElementById('hotwordSourceLang').textContent = '自动识别'; document.getElementById('hotwordTargetLang').textContent = dom.targetLangName.textContent;
+    dom.hotwordModalOverlay.classList.add('show');
+});
+dom.hotwordAdd.addEventListener('click', () => { if (dom.hotwordList.children.length < 1000) hotwordRow(); });
+dom.hotwordModalClose.addEventListener('click', closeHotwords); dom.hotwordCancel.addEventListener('click', closeHotwords);
+dom.hotwordConfirm.addEventListener('click', run(() => {
+    const words = [], seen = new Set();
+    for (const row of dom.hotwordList.children) {
+        const [source, target] = [...row.querySelectorAll('input')].map(input => input.value.trim());
+        if (!source && !target) continue;
+        if (!source || !target) throw new Error('每个热词都需要原文和指定译文');
+        if (seen.has(source)) throw new Error('热词原文重复：' + source);
+        seen.add(source); words.push({ source, target });
     }
-    .ri-spin {
-        animation: ri-spin 1s linear infinite;
-        display: inline-block;
-    }
-`;
-document.head.appendChild(styleEl);
+    state.setHotwords(words); localStorage.setItem('ddtrans.hotwords', JSON.stringify(words)); closeHotwords(); translation.showFeedback('热词已保存，将用于下一次开始的同传。', 'success');
+}));
+document.addEventListener('click', () => { lang.closeAllLangDropdowns(); [dom.viewModeMenu, dom.layoutMenu, dom.shareMenu, dom.audioSourcePanel, dom.fcSourcePanel].forEach(menu => menu.classList.remove('show')); });
+document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeHotwords(); [dom.stopConfirmOverlay, dom.restartConfirmOverlay].forEach(modal => modal.classList.remove('show')); } });

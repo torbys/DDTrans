@@ -58,6 +58,10 @@ export function decreaseFontSize() {
 export function updateFontSize() {
     dom.sourceText.style.fontSize = `${state.currentFontSize}px`;
     dom.targetText.style.fontSize = `${state.currentFontSize}px`;
+    // 同步icon字号
+    const iconSize = state.currentFontSize + 3;
+    if (dom.sourceSpeakerIcon) dom.sourceSpeakerIcon.style.fontSize = `${iconSize}px`;
+    if (dom.targetSpeakerIcon) dom.targetSpeakerIcon.style.fontSize = `${iconSize}px`;
 }
 
 export function setLayout(layout) {

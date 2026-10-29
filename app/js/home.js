@@ -1,399 +1,83 @@
-/**
- * 主页面逻辑
- */
-
 import { LANG_DATA } from './config.js';
 import { buildVolumeBars, updateVolumeBars } from './utils.js';
-
-// DOM 元素
-const minimizeBtn = document.getElementById("minimizeBtn");
-const maximizeBtn = document.getElementById("maximizeBtn");
-const closeBtn = document.getElementById("closeBtn");
-const createMeetingCard = document.getElementById("createMeetingCard");
-const manageMeetingCard = document.getElementById("manageMeetingCard");
-
-// 弹窗
-const createModalOverlay = document.getElementById("createModalOverlay");
-const createModal = document.getElementById("createModal");
-const modalClose = document.getElementById("modalClose");
-const modalCancel = document.getElementById("modalCancel");
-const modalConfirm = document.getElementById("modalConfirm");
-const meetingNameInput = document.getElementById("meetingNameInput");
-
-// 弹窗语言选择
-const modalSourceLangDropdown = document.getElementById("modalSourceLangDropdown");
-const modalSourceLangTrigger = document.getElementById("modalSourceLangTrigger");
-const modalSourceLangMenu = document.getElementById("modalSourceLangMenu");
-const modalSourceLangName = document.getElementById("modalSourceLangName");
-const modalSourceLangNative = document.getElementById("modalSourceLangNative");
-
-const modalTargetLangDropdown = document.getElementById("modalTargetLangDropdown");
-const modalTargetLangTrigger = document.getElementById("modalTargetLangTrigger");
-const modalTargetLangMenu = document.getElementById("modalTargetLangMenu");
-const modalTargetLangName = document.getElementById("modalTargetLangName");
-const modalTargetLangNative = document.getElementById("modalTargetLangNative");
-
-const modalLangSwapBtn = document.getElementById("modalLangSwapBtn");
-
-// 音频设备选择
-const modalAudioDeviceDropdown = document.getElementById("modalAudioDeviceDropdown");
-const modalAudioDeviceTrigger = document.getElementById("modalAudioDeviceTrigger");
-const modalAudioDeviceMenu = document.getElementById("modalAudioDeviceMenu");
-const modalAudioDeviceName = document.getElementById("modalAudioDeviceName");
-const modalVolumeBars = document.getElementById("modalVolumeBars");
-const modalAudioTestStatus = document.getElementById("modalAudioTestStatus");
-
-// 状态
-let modalSourceLang = "en";
-let modalTargetLang = "zh";
-let modalSelectedDeviceId = null;
-let modalTestStream = null;
-let modalTestAudioCtx = null;
-let modalTestAnalyser = null;
-let modalTestAnimationId = null;
-
-// ============ 初始化 ============
-function init() {
-    // 窗口控制按钮（Electron 环境）
-    if (window.electronAPI) {
-        minimizeBtn.addEventListener("click", () => {
-            window.electronAPI.minimizeWindow();
-        });
-        maximizeBtn.addEventListener("click", () => {
-            window.electronAPI.maximizeWindow();
-        });
-        closeBtn.addEventListener("click", () => {
-            window.electronAPI.closeWindow();
-        });
-    }
-
-    // 创建同传 - 打开弹窗
-    createMeetingCard.addEventListener("click", openModal);
-
-    // 同传管理 - 暂留
-    manageMeetingCard.addEventListener("click", () => {
-        console.log("同传管理功能暂留");
-    });
-
-    // 弹窗关闭
-    modalClose.addEventListener("click", closeModal);
-    modalCancel.addEventListener("click", closeModal);
-    createModalOverlay.addEventListener("click", (e) => {
-        if (e.target === createModalOverlay) closeModal();
-    });
-
-    // 确定创建
-    modalConfirm.addEventListener("click", confirmCreate);
-
-    // 初始化弹窗语言下拉
-    initModalLangDropdowns();
-
-    // 初始化音频设备下拉
-    initAudioDeviceDropdown();
-
-    // 生成音量格子
-    buildVolumeBars(modalVolumeBars, 20, "vol-bar");
-
-    // 默认会议名称
-    const now = new Date();
-    const dateStr = `${now.getFullYear()}年${String(now.getMonth() + 1).padStart(2, '0')}月${String(now.getDate()).padStart(2, '0')}日`;
-    meetingNameInput.value = `${dateStr}_记录_1`;
+const byId = id => document.getElementById(id);
+const overlay = byId('createModalOverlay');
+const input = byId('meetingNameInput');
+const menu = byId('modalTargetLangMenu');
+const deviceMenu = byId('modalAudioDeviceMenu');
+const level = byId('modalVolumeBars');
+const status = byId('modalAudioTestStatus');
+let target = 'zh', deviceId = 'default', testStream, context, animation, generation = 0;
+input.maxLength = 200;
+byId('modalSourceLangName').textContent = '自动识别'; byId('modalSourceLangNative').textContent = 'Auto';
+byId('modalSourceLangTrigger').setAttribute('aria-disabled', 'true'); byId('modalSourceLangTrigger').style.pointerEvents = 'none';
+byId('modalLangSwapBtn').hidden = true;
+buildVolumeBars(level, 16);
+function closeMenus() { menu.classList.remove('show'); deviceMenu.classList.remove('show'); }
+function updateLanguage() {
+    const language = LANG_DATA.find(item => item.code === target);
+    byId('modalTargetLangName').textContent = language.name; byId('modalTargetLangNative').textContent = language.native;
 }
-
-// ============ 弹窗控制 ============
-function openModal() {
-    createModalOverlay.classList.add("show");
+for (const language of LANG_DATA) {
+    const item = document.createElement('button'); item.type = 'button'; item.className = 'modal-select-item'; item.textContent = language.name + ' · ' + language.native;
+    item.addEventListener('click', () => { target = language.code; updateLanguage(); closeMenus(); }); menu.append(item);
 }
-
-function closeModal() {
-    createModalOverlay.classList.remove("show");
-    stopModalAudioTest();
+byId('modalTargetLangTrigger').addEventListener('click', event => { event.stopPropagation(); const open = !menu.classList.contains('show'); closeMenus(); menu.classList.toggle('show', open); });
+byId('modalAudioDeviceTrigger').addEventListener('click', event => { event.stopPropagation(); const open = !deviceMenu.classList.contains('show'); closeMenus(); deviceMenu.classList.toggle('show', open); });
+async function stopTest() {
+    generation++; if (animation) cancelAnimationFrame(animation); animation = null;
+    testStream?.getTracks().forEach(track => track.stop()); testStream = null;
+    const old = context; context = null; if (old && old.state !== 'closed') await old.close();
+    updateVolumeBars(0, level);
 }
-
-function confirmCreate() {
-    const meetingName = meetingNameInput.value.trim() || "未命名会议";
-
-    // 构建 URL 参数
-    const params = new URLSearchParams();
-    params.set("name", meetingName);
-    params.set("sourceLang", modalSourceLang);
-    params.set("targetLang", modalTargetLang);
-    if (modalSelectedDeviceId) params.set("audioDevice", modalSelectedDeviceId);
-
-    window.location.href = `./index.html?${params.toString()}`;
-}
-
-// ============ 弹窗语言选择 ============
-function initModalLangDropdowns() {
-    renderLangMenu(modalSourceLangMenu, "source");
-    renderLangMenu(modalTargetLangMenu, "target");
-
-    modalSourceLangTrigger.addEventListener("click", (e) => {
-        e.stopPropagation();
-        toggleModalLangDropdown(modalSourceLangMenu, modalSourceLangDropdown);
-    });
-
-    modalTargetLangTrigger.addEventListener("click", (e) => {
-        e.stopPropagation();
-        toggleModalLangDropdown(modalTargetLangMenu, modalTargetLangDropdown);
-    });
-
-    modalLangSwapBtn.addEventListener("click", () => {
-        const temp = modalSourceLang;
-        modalSourceLang = modalTargetLang;
-        modalTargetLang = temp;
-        updateModalLangDisplay();
-    });
-
-    document.addEventListener("click", () => {
-        modalSourceLangMenu.classList.remove("show");
-        modalSourceLangDropdown.classList.remove("open");
-        modalTargetLangMenu.classList.remove("show");
-        modalTargetLangDropdown.classList.remove("open");
-        modalAudioDeviceMenu.classList.remove("show");
-        modalAudioDeviceDropdown.classList.remove("open");
-    });
-
-    updateModalLangDisplay();
-}
-
-function renderLangMenu(menu, type) {
-    menu.innerHTML = "";
-    LANG_DATA.forEach((lang) => {
-        const item = document.createElement("div");
-        item.className = "modal-select-item";
-        item.dataset.code = lang.code;
-        item.innerHTML = `
-            <span class="item-name">${lang.name}</span>
-            <span class="item-native">${lang.native}</span>
-            <span class="item-check"><i class="ri-check-line"></i></span>
-        `;
-        item.addEventListener("click", () => {
-            if (type === "source") {
-                modalSourceLang = lang.code;
-                if (modalSourceLang === modalTargetLang) {
-                    const other = LANG_DATA.find((l) => l.code !== modalSourceLang);
-                    if (other) modalTargetLang = other.code;
-                }
-            } else {
-                modalTargetLang = lang.code;
-                if (modalTargetLang === modalSourceLang) {
-                    const other = LANG_DATA.find((l) => l.code !== modalTargetLang);
-                    if (other) modalSourceLang = other.code;
-                }
-            }
-            updateModalLangDisplay();
-            modalSourceLangMenu.classList.remove("show");
-            modalSourceLangDropdown.classList.remove("open");
-            modalTargetLangMenu.classList.remove("show");
-            modalTargetLangDropdown.classList.remove("open");
-        });
-        menu.appendChild(item);
-    });
-}
-
-function toggleModalLangDropdown(menu, dropdown) {
-    const isOpen = menu.classList.contains("show");
-    modalSourceLangMenu.classList.remove("show");
-    modalSourceLangDropdown.classList.remove("open");
-    modalTargetLangMenu.classList.remove("show");
-    modalTargetLangDropdown.classList.remove("open");
-    if (!isOpen) {
-        menu.classList.add("show");
-        dropdown.classList.add("open");
-        highlightModalActiveItem(menu, dropdown === modalSourceLangDropdown ? modalSourceLang : modalTargetLang);
-    }
-}
-
-function highlightModalActiveItem(menu, code) {
-    menu.querySelectorAll(".modal-select-item").forEach((item) => {
-        item.classList.toggle("active", item.dataset.code === code);
-    });
-}
-
-function updateModalLangDisplay() {
-    const sourceLang = LANG_DATA.find((l) => l.code === modalSourceLang);
-    const targetLang = LANG_DATA.find((l) => l.code === modalTargetLang);
-
-    if (sourceLang) {
-        modalSourceLangName.textContent = sourceLang.name;
-        modalSourceLangNative.textContent = sourceLang.native;
-    }
-    if (targetLang) {
-        modalTargetLangName.textContent = targetLang.name;
-        modalTargetLangNative.textContent = targetLang.native;
-    }
-}
-
-// ============ 音频设备选择 ============
-async function initAudioDeviceDropdown() {
+async function testDevice(id) {
+    await stopTest(); const current = generation; status.textContent = '正在打开麦克风…';
     try {
-        await navigator.mediaDevices.getUserMedia({ audio: true });
-        const devices = await navigator.mediaDevices.enumerateDevices();
-        const audioInputs = devices.filter((d) => d.kind === "audioinput");
-
-        // 过滤系统虚拟设备（与 audio-source.js 保持一致）
-        const filteredInputs = audioInputs.filter((d) => {
-            // 跳过 default 和 communications 设备ID
-            if (d.deviceId === "default" || d.deviceId === "communications") {
-                return false;
-            }
-            const label = d.label || "";
-            // 跳过以 Default / Communications 开头的 label
-            if (/^Default\s*[-–—]/i.test(label) || /^Communications\s*[-–—]/i.test(label)) {
-                return false;
-            }
-            // 跳过立体声混音
-            if (label.includes("立体声混音") || label.includes("Stereo Mix")) {
-                return false;
-            }
-            return true;
-        });
-
-        // 去重：按 label 去重，保留第一个
-        const seenLabels = new Set();
-        const uniqueInputs = filteredInputs.filter((d) => {
-            if (!d.label || seenLabels.has(d.label)) return false;
-            seenLabels.add(d.label);
-            return true;
-        });
-
-        modalAudioDeviceMenu.innerHTML = "";
-
-        // 添加一个默认选项
-        const defaultItem = document.createElement("div");
-        defaultItem.className = "modal-select-item active";
-        defaultItem.dataset.deviceId = "";
-        defaultItem.innerHTML = `
-            <span class="item-name">系统默认</span>
-            <span class="item-check"><i class="ri-check-line"></i></span>
-        `;
-        defaultItem.addEventListener("click", () => {
-            modalSelectedDeviceId = "";
-            modalAudioDeviceName.textContent = "系统默认";
-            modalAudioDeviceMenu.classList.remove("show");
-            modalAudioDeviceDropdown.classList.remove("open");
-            startModalAudioTest("");
-        });
-        modalAudioDeviceMenu.appendChild(defaultItem);
-
-        uniqueInputs.forEach((device) => {
-            const item = document.createElement("div");
-            item.className = "modal-select-item";
-            item.dataset.deviceId = device.deviceId;
-            item.innerHTML = `
-                <span class="item-name">${device.label || "未命名设备"}</span>
-                <span class="item-check"><i class="ri-check-line"></i></span>
-            `;
-            item.addEventListener("click", () => {
-                modalSelectedDeviceId = device.deviceId;
-                modalAudioDeviceName.textContent = device.label || "未命名设备";
-                modalAudioDeviceMenu.classList.remove("show");
-                modalAudioDeviceDropdown.classList.remove("open");
-                startModalAudioTest(device.deviceId);
-            });
-            modalAudioDeviceMenu.appendChild(item);
-        });
-
-        modalAudioDeviceTrigger.addEventListener("click", (e) => {
-            e.stopPropagation();
-            const isOpen = modalAudioDeviceMenu.classList.contains("show");
-            modalAudioDeviceMenu.classList.remove("show");
-            modalAudioDeviceDropdown.classList.remove("open");
-            if (!isOpen) {
-                modalAudioDeviceMenu.classList.add("show");
-                modalAudioDeviceDropdown.classList.add("open");
-            }
-        });
-
-    } catch (err) {
-        console.error("枚举音频设备失败:", err);
-        modalAudioDeviceName.textContent = "无法访问音频设备";
-    }
-}
-
-// ============ 音频测试 ============
-async function startModalAudioTest(deviceId) {
-    stopModalAudioTest();
-
-    try {
-        modalAudioTestStatus.textContent = "正在监听音频...";
-
-        const constraints = {
-            audio: {
-                deviceId: deviceId ? { exact: deviceId } : undefined,
-                channelCount: 1,
-                echoCancellation: false,
-                noiseSuppression: false,
-                autoGainControl: false,
-            },
-        };
-
-        modalTestStream = await navigator.mediaDevices.getUserMedia(constraints);
-        modalTestAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const sampleRate = modalTestAudioCtx.sampleRate;
-
-        modalTestAnalyser = modalTestAudioCtx.createAnalyser();
-        modalTestAnalyser.fftSize = 256;
-        modalTestAnalyser.smoothingTimeConstant = 0.3;
-
-        const source = modalTestAudioCtx.createMediaStreamSource(modalTestStream);
-        source.connect(modalTestAnalyser);
-
-        const freqData = new Uint8Array(modalTestAnalyser.frequencyBinCount);
-        let silenceCount = 0;
-
-        function detectVolume() {
-            if (!modalTestAnalyser) return;
-            modalTestAnalyser.getByteFrequencyData(freqData);
-            let sum = 0;
-            for (let i = 0; i < freqData.length; i++) sum += freqData[i];
-            const avg = sum / freqData.length / 255;
-
-            updateVolumeBars(avg, modalVolumeBars);
-
-            if (avg > 0.5) {
-                modalAudioTestStatus.textContent = `检测到较强声音 (${Math.round(avg * 100)}%) - 音频正常`;
-                silenceCount = 0;
-            } else if (avg > 0.05) {
-                modalAudioTestStatus.textContent = `检测到声音 (${Math.round(avg * 100)}%)`;
-                silenceCount = 0;
-            } else {
-                silenceCount++;
-                if (silenceCount > 30) {
-                    modalAudioTestStatus.textContent = "未检测到声音 - 请检查设备是否静音";
-                } else {
-                    modalAudioTestStatus.textContent = "正在监听... 请说话或播放音频";
-                }
-            }
-
-            modalTestAnimationId = requestAnimationFrame(detectVolume);
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: id === 'default' ? undefined : { exact: id }, channelCount: 1 } });
+        if (current !== generation) { stream.getTracks().forEach(track => track.stop()); return; }
+        testStream = stream; context = new AudioContext(); await context.resume();
+        const analyser = context.createAnalyser(); analyser.fftSize = 512;
+        const source = context.createMediaStreamSource(stream); const zero = context.createGain(); zero.gain.value = 0;
+        source.connect(analyser); analyser.connect(zero); zero.connect(context.destination);
+        const samples = new Float32Array(analyser.fftSize);
+        function tick() {
+            if (current !== generation) return;
+            analyser.getFloatTimeDomainData(samples); let sum = 0; for (const value of samples) sum += value * value;
+            const rms = Math.sqrt(sum / samples.length); updateVolumeBars(Math.min(1, rms * 4), level);
+            status.textContent = rms > 0.01 ? '已检测到声音，设备可用。' : '正在测试，请对麦克风说话。';
+            animation = requestAnimationFrame(tick);
         }
-
-        detectVolume();
-
-    } catch (err) {
-        modalAudioTestStatus.textContent = "测试失败: " + err.message;
-        console.error("[音频测试] 失败:", err);
-    }
+        tick();
+    } catch (error) { if (current === generation) { await stopTest(); status.textContent = '测试失败：' + error.message; } }
 }
-
-function stopModalAudioTest() {
-    if (modalTestAnimationId) {
-        cancelAnimationFrame(modalTestAnimationId);
-        modalTestAnimationId = null;
-    }
-    if (modalTestStream) {
-        modalTestStream.getTracks().forEach((t) => t.stop());
-        modalTestStream = null;
-    }
-    if (modalTestAudioCtx && modalTestAudioCtx.state !== "closed") {
-        modalTestAudioCtx.close();
-        modalTestAudioCtx = null;
-    }
-    modalTestAnalyser = null;
-    updateVolumeBars(0, modalVolumeBars);
-    modalAudioTestStatus.textContent = "请选择音频设备进行测试";
+async function loadDevices() {
+    deviceMenu.replaceChildren();
+    try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const inputs = devices.filter(item => item.kind === 'audioinput' && item.deviceId !== 'communications');
+        if (!inputs.some(item => item.deviceId === 'default')) inputs.unshift({ deviceId: 'default', label: '系统默认麦克风' });
+        inputs.forEach((device, index) => {
+            const item = document.createElement('button'); item.type = 'button'; item.className = 'modal-select-item'; item.textContent = device.label || '麦克风 ' + (index + 1);
+            item.addEventListener('click', () => { deviceId = device.deviceId || 'default'; byId('modalAudioDeviceName').textContent = item.textContent; closeMenus(); void testDevice(deviceId); }); deviceMenu.append(item);
+        });
+    } catch (error) { status.textContent = '设备列表不可用：' + error.message; }
 }
+byId('createMeetingCard').addEventListener('click', () => {
+    input.value = '同传 ' + new Date().toLocaleString('zh-CN'); overlay.classList.add('show'); input.focus();
+    status.textContent = '选择设备可测试音量；开始同传时使用该设备。'; void loadDevices();
+});
+async function closeModal() { overlay.classList.remove('show'); await stopTest(); }
+byId('modalClose').addEventListener('click', () => void closeModal()); byId('modalCancel').addEventListener('click', () => void closeModal());
+overlay.addEventListener('click', event => { if (event.target === overlay) void closeModal(); });
+byId('modalConfirm').addEventListener('click', async () => {
+    byId('modalConfirm').disabled = true;
+    try { await stopTest(); const query = new URLSearchParams({ name: input.value.trim() || '未命名同传', targetLang: target, audioDevice: deviceId }); location.href = './index.html?' + query; }
+    finally { byId('modalConfirm').disabled = false; }
+});
+byId('manageMeetingCard').addEventListener('click', () => { if (window.electronAPI) window.electronAPI.openManageWindow(); else location.href = './manage.html'; });
+for (const [id, method] of [['minimizeBtn', 'minimizeWindow'], ['maximizeBtn', 'maximizeWindow'], ['closeBtn', 'closeWindow']]) byId(id).addEventListener('click', () => window.electronAPI?.[method]());
+document.addEventListener('click', closeMenus);
+document.addEventListener('keydown', event => { if (event.key === 'Escape') void closeModal(); });
+window.addEventListener('pagehide', () => void stopTest());
+updateLanguage();
 
-init();
