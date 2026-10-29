@@ -39,6 +39,7 @@ dom.aiVoiceBtn.addEventListener('click', run(async () => {
     translation.showFeedback(enabled ? '已开启译音播报，设置会用于下一次开始的同传。' : '已关闭译音播报，下一次开始时仅生成文字字幕。');
 }));
 dom.aiVoiceHint.title = '实时播报译音；支持自身音频隔离的系统可同时采集电脑声音。部分目标语言仅支持文字。';
+document.getElementById('overlayBtn').addEventListener('click', run(translation.enterOverlay));
 dom.startBtn.addEventListener('click', run(translation.toggleTranslation));
 dom.fcPauseBtn.addEventListener('click', run(translation.togglePause));
 dom.sourceSpeakerIcon.addEventListener('click', run(() => translation.playRecording('raw')));

@@ -54,12 +54,16 @@ async function fixture({ systemAudio = true, failCapture = false } = {}) {
 
 const pcmAudio = { type: 'audio', audio: Buffer.from([1, 0, 2, 0]).toString('base64') };
 
-test('media owner preserves final segments, direct TTS controls and capture frames', async t => {
+test('media owner preserves final segments across overlay attachment and direct TTS controls', async t => {
     const f = await fixture();
     t.after(() => f.media.execute('stop'));
-    await f.media.execute('start', { targetLanguage: 'zh', useSystemAudio: true, useMicAudio: false, audioEnabled: true });
+    await f.media.execute('prepare-overlay', { targetLanguage: 'zh' });
     const ws = f.sockets[0];
     ws.receive({ type: 'segment', segment: { segment_key: 'first', sequence_order: 1, source_text: 'hello', target_text: '你好', status: 'final' } });
+    const before = await f.media.execute('snapshot');
+    const reattached = await f.media.execute('prepare-overlay');
+    assert.equal(reattached.sessionId, before.sessionId);
+    assert.equal(f.sockets.length, 1);
     ws.receive(pcmAudio);
     await drain();
     assert.equal(f.players.length, 1);
@@ -87,24 +91,26 @@ test('target switch saves the old session and retains paused state', async t => 
     assert.deepEqual(f.requests.map(request => request.type), ['start', 'pause', 'stop', 'start', 'pause']);
 });
 
-test('capture failures leave a clean failed state and allow a new start', async t => {
+test('overlay preparation failures leave a clean failed state and allow a new start', async t => {
     const f = await fixture({ failCapture: true });
     t.after(() => f.media.execute('stop'));
-    await assert.rejects(f.media.execute('start'), /Permission denied/);
+    await assert.rejects(f.media.execute('prepare-overlay'), /Permission denied/);
     assert.equal((await f.media.execute('snapshot')).phase, 'failed');
-    const result = await f.media.execute('start');
+    const result = await f.media.execute('prepare-overlay');
     assert.equal(result.phase, 'running');
 });
 
-test('pause and resume release and rebuild capture while preserving the session', async t => {
+test('direct TTS remains available while capturing either system or microphone audio', async t => {
     const f = await fixture();
     t.after(() => f.media.execute('stop'));
-    const running = await f.media.execute('start');
-    await f.media.execute('pause');
-    assert.equal(f.captures[0].stopped, true);
-    await f.media.execute('resume');
-    assert.equal(f.captures.length, 2);
-    assert.equal((await f.media.execute('snapshot')).sessionId, running.sessionId);
+    await f.media.execute('start');
+    f.sockets[0].receive(pcmAudio);
+    await drain();
+    assert.equal(f.players.length, 1);
+    await f.media.execute('switch-source', { useSystemAudio: false, useMicAudio: true });
+    f.sockets[0].receive(pcmAudio);
+    await drain();
+    assert.equal(f.players.length, 2);
 });
 
 test('concurrent start and stop are serialized and lost connections release media', async t => {
