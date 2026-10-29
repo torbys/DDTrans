@@ -75,6 +75,10 @@ byId('modalConfirm').addEventListener('click', async () => {
     finally { byId('modalConfirm').disabled = false; }
 });
 byId('manageMeetingCard').addEventListener('click', () => { if (window.electronAPI) window.electronAPI.openManageWindow(); else location.href = './manage.html'; });
+byId('openSettingsBtn').addEventListener('click', () => {
+    if (window.electronAPI) void window.electronAPI.openAudioSettings();
+    else location.href = './settings.html';
+});
 for (const [id, method] of [['minimizeBtn', 'minimizeWindow'], ['maximizeBtn', 'maximizeWindow'], ['closeBtn', 'closeWindow']]) byId(id).addEventListener('click', () => window.electronAPI?.[method]());
 document.addEventListener('click', closeMenus);
 document.addEventListener('keydown', event => { if (event.key === 'Escape') void closeModal(); });

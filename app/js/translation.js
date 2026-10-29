@@ -63,9 +63,9 @@ function applySnapshot(snapshot) {
         dom.aspMicAudio.checked = dom.fcSpMicAudio.checked = config.useMicAudio;
         dom.fcSourceLabel.textContent = config.useSystemAudio && config.useMicAudio ? '混合声源' : config.useSystemAudio ? '电脑声音' : '麦克风';
     }
-    if (snapshot.ttsEnabled !== undefined && !TEXT_ONLY_LANGS.includes(state.currentTargetLang)) {
-        state.setAiVoiceEnabled(snapshot.ttsEnabled);
-        dom.aiVoiceBtn.setAttribute('aria-pressed', String(snapshot.ttsEnabled));
+    if (snapshot.audioRouting && !TEXT_ONLY_LANGS.includes(state.currentTargetLang)) {
+        state.setAiVoiceEnabled(snapshot.audioRouting.ttsEnabled);
+        dom.aiVoiceBtn.setAttribute('aria-pressed', String(snapshot.audioRouting.ttsEnabled));
     }
     if (snapshot.segments) for (const segment of snapshot.segments) { segments.set(segment.segment_key, segment); renderer.upsertSegment(segment); }
     if (segments.size || snapshot.phase === 'running') { dom.emptyState.style.display = 'none'; view.applyViewMode(); }

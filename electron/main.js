@@ -1,13 +1,14 @@
-const { app, BrowserWindow, clipboard, desktopCapturer, dialog, ipcMain, powerSaveBlocker, screen, session, utilityProcess } = require('electron');
+const { app, BrowserWindow, clipboard, desktopCapturer, dialog, ipcMain, powerSaveBlocker, screen, session, shell, utilityProcess } = require('electron');
 const os = require('node:os');
 const path = require('node:path');
 const { createOverlayPreferences } = require('./window-preferences.js');
+const { createAudioSettings } = require('./audio-settings.js');
 
 if (process.env.DDTRANS_TEST_USER_DATA) app.setPath('userData', process.env.DDTRANS_TEST_USER_DATA);
 
-const MEDIA_COMMANDS = new Set(['start', 'pause', 'resume', 'stop', 'switch-source', 'set-tts', 'set-volume', 'set-target', 'save-note', 'snapshot']);
+const MEDIA_COMMANDS = new Set(['start', 'pause', 'resume', 'stop', 'switch-source', 'set-tts', 'set-volume', 'set-audio-routing', 'set-target', 'save-note', 'enumerate-devices', 'request-audio-permission', 'audio-routing-test', 'snapshot']);
 const HOST_COMMANDS = new Set([...MEDIA_COMMANDS, 'prepare-overlay']);
-const ACTIVATION_COMMANDS = new Set(['prepare-overlay', 'start', 'resume', 'switch-source', 'set-target']);
+const ACTIVATION_COMMANDS = new Set(['prepare-overlay', 'start', 'resume', 'switch-source', 'set-target', 'request-audio-permission', 'audio-routing-test']);
 const HOST_TIMEOUT_MS = 40_000;
 const HOST_READY_TIMEOUT_MS = 40_000;
 const SHUTDOWN_HOST_TIMEOUT_MS = 80_000;
@@ -19,6 +20,7 @@ let backend;
 let origin;
 let mainWindow;
 let manageWindow;
+let audioSettingsWindow;
 let mediaHost;
 let overlayWindow;
 let overlayPreferences;
@@ -33,6 +35,7 @@ let overlayTransition;
 let overlayClampTimer;
 let overlayReturnPage = 'home.html';
 let returningToMain = false;
+let audioSettingsStore;
 const hostPending = new Map();
 const detailWindows = new Map();
 
@@ -108,7 +111,7 @@ function createWindow(page, { width = 1200, height = 800, minWidth = 1000, minHe
 }
 
 function uiWindows() {
-  return [mainWindow, manageWindow, overlayWindow, ...detailWindows.values()]
+  return [mainWindow, manageWindow, audioSettingsWindow, overlayWindow, ...detailWindows.values()]
     .filter(window => window && !window.isDestroyed());
 }
 
@@ -157,6 +160,7 @@ function attachStandardWindowLifecycle(window, kind, id) {
   window.on('closed', () => {
     if (kind === 'main') mainWindow = null;
     if (kind === 'manage') manageWindow = null;
+    if (kind === 'settings') audioSettingsWindow = null;
     if (kind === 'detail') detailWindows.delete(id);
   });
 }
@@ -363,7 +367,14 @@ async function enterOverlay(options = {}) {
   overlayTransition = (async () => {
     try { await hostCommand('prepare-overlay', options); }
     catch (error) {
-      if (/NotAllowedError|无法采集电脑声音|麦克风.*权限/i.test(error.message)) dialog.showErrorBox('无法开启收音', error.message + '。请检查 Windows 的麦克风隐私设置和音频设备，然后重试。');
+      if (/NotAllowedError|无法采集电脑声音|麦克风.*权限/i.test(error.message)) {
+        const response = await dialog.showMessageBox(mainWindow || undefined, {
+          type: 'warning', title: '无法开启收音', message: '系统没有允许音频采集',
+          detail: error.message + '。请检查 Windows 的麦克风隐私设置和音频设备，然后重试。',
+          buttons: ['打开系统设置', '取消'], defaultId: 0, cancelId: 1,
+        });
+        if (response.response === 0 && process.platform === 'win32') await shell.openExternal('ms-settings:privacy-microphone');
+      }
       throw error;
     }
     overlayPreferences.update({ mode: 'standard' });
@@ -475,11 +486,12 @@ async function handleMediaHostFailure(message) {
 }
 
 function destroyWindows() {
-  for (const window of [mainWindow, manageWindow, overlayWindow, ...detailWindows.values(), mediaHost]) {
+  for (const window of [mainWindow, manageWindow, audioSettingsWindow, overlayWindow, ...detailWindows.values(), mediaHost]) {
     if (window && !window.isDestroyed()) window.destroy();
   }
   mainWindow = null;
   manageWindow = null;
+  audioSettingsWindow = null;
   overlayWindow = null;
   mediaHost = null;
   detailWindows.clear();
@@ -508,6 +520,11 @@ function windowsBuildNumber() {
   const release = os.release();
   const build = Number(release.split('.').pop());
   return Number.isSafeInteger(build) ? build : 0;
+}
+
+function getAudioSettingsStore() {
+  if (!audioSettingsStore) audioSettingsStore = createAudioSettings({ userDataPath: app.getPath('userData') });
+  return audioSettingsStore;
 }
 
 function mediaCapabilities() {
@@ -608,6 +625,32 @@ ipcMain.handle('return-to-main', event => {
   trustedOverlay(event);
   return returnToMain();
 });
+ipcMain.handle('open-audio-settings', event => {
+  trusted(event);
+  if (focusWindow(audioSettingsWindow)) return true;
+  audioSettingsWindow = createWindow('settings.html', { width: 900, height: 760, minWidth: 760, minHeight: 620 });
+  if (overlayWindow && !overlayWindow.isDestroyed()) audioSettingsWindow.setAlwaysOnTop(true, 'screen-saver');
+  attachStandardWindowLifecycle(audioSettingsWindow, 'settings');
+  return true;
+});
+ipcMain.handle('open-system-audio-settings', async event => {
+  trusted(event);
+  if (process.platform !== 'win32') return false;
+  return shell.openExternal('ms-settings:apps-volume');
+});
+ipcMain.handle('get-audio-settings', event => {
+  trusted(event);
+  return getAudioSettingsStore().get();
+});
+ipcMain.handle('persist-audio-settings', (event, settings) => {
+  if (!isHostMessage(event)) throw new Error('此操作仅限媒体宿主');
+  return getAudioSettingsStore().replace(settings);
+});
+ipcMain.handle('open-permission-settings', async event => {
+  trusted(event);
+  if (process.platform !== 'win32') return false;
+  return shell.openExternal('ms-settings:privacy-microphone');
+});
 ipcMain.handle('copy-text', async (event, text) => {
   trusted(event);
   if (typeof text !== 'string') throw new Error('复制内容必须是文本');
@@ -620,6 +663,10 @@ ipcMain.handle('copy-text', async (event, text) => {
 ipcMain.on('get-media-capabilities', event => {
   if (!isHostMessage(event)) trusted(event);
   event.returnValue = mediaCapabilities();
+});
+ipcMain.on('get-audio-settings', event => {
+  if (!isHostMessage(event)) trusted(event);
+  event.returnValue = getAudioSettingsStore().get();
 });
 ipcMain.handle('window-minimize', event => trusted(event).minimize());
 ipcMain.handle('window-maximize', event => {
@@ -648,6 +695,7 @@ else {
   app.on('second-instance', () => { focusWindow(overlayWindow) || focusWindow(mainWindow); });
   app.whenReady().then(async () => {
     overlayPreferences = createOverlayPreferences({ userDataPath: app.getPath('userData') });
+    getAudioSettingsStore();
     await startBackend();
     setupSessionPolicies();
     await createMediaHost();

@@ -16,6 +16,9 @@
                     <span class="session-state" id="sessionState">未开始</span>
                 </div>
                 <div class="header-actions no-drag">
+                    <button class="icon-button text-icon-button" id="permissionBtn" type="button" title="查看电脑声音采集权限" aria-label="查看电脑声音采集权限">
+                        <span aria-hidden="true">权限</span>
+                    </button>
                     <button class="icon-button text-icon-button" id="hideSubtitlesBtn" type="button" title="隐藏字幕" aria-label="隐藏字幕">
                         <span id="hideSubtitlesMark" aria-hidden="true">字幕</span>
                     </button>
@@ -46,6 +49,13 @@
                         </span>
                     </button>
                     <div class="primary-actions">
+                        <button class="audio-settings-button" id="audioSettingsBtn" type="button" title="打开系统音频设置">
+                            <span class="setting-mark" aria-hidden="true">混</span>
+                            <span class="audio-settings-copy">
+                                <strong>混音设置</strong>
+                                <small>原声与译音分别调节</small>
+                            </span>
+                        </button>
                         <button class="finish-button" id="exitBtn" type="button" title="结束同传并保存" aria-label="结束同传并保存">
                             <span aria-hidden="true">■</span>
                             <span>退出同传</span>
@@ -81,6 +91,30 @@
                         </div>
                     </div>
                     <small class="inline-note" id="ttsNote" hidden>此语言仅支持文本输出</small>
+                </div>
+
+                <div class="control-row setting-row mix-row" id="mixRow">
+                    <span class="setting-label">
+                        <span class="setting-mark" aria-hidden="true">混</span>
+                        <span class="setting-copy">
+                            <strong>发送混音</strong>
+                            <small>用于发送和混合预听</small>
+                        </span>
+                    </span>
+                    <div class="mix-controls">
+                        <label class="mini-range" for="originalGain">
+                            <span>原声</span>
+                            <output id="originalGainValue">100%</output>
+                            <input id="originalGain" type="range" min="0" max="100" value="100" aria-label="发送到虚拟设备的原声音量">
+                            <small><span>静音</span><span>大声</span></small>
+                        </label>
+                        <label class="mini-range" for="translatedGain">
+                            <span>译音</span>
+                            <output id="translatedGainValue">100%</output>
+                            <input id="translatedGain" type="range" min="0" max="100" value="100" aria-label="发送到虚拟设备的译音音量">
+                            <small><span>静音</span><span>大声</span></small>
+                        </label>
+                    </div>
                 </div>
 
                 <div class="control-row setting-row opacity-row">
