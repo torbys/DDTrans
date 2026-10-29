@@ -1,6 +1,6 @@
 import { LANG_DATA, TEXT_ONLY_LANGS } from './config.js';
-import { normalizeAudioRouting, validateAudioRoutingPatch } from './audio-routing-config.js';
-import { resolveAudioDevice } from './audio-mix-bus.js';
+import { DEFAULT_AUDIO_ROUTING, normalizeAudioRouting, validateAudioRoutingPatch } from './audio-routing-config.js';
+import { resolveAudioDevice, resolveDDTransVirtualPair, resolveOutgoingMicrophone } from './audio-mix-bus.js';
 
 const activePhases = new Set(['starting', 'running', 'pausing', 'paused', 'stopping']);
 const languages = new Set(LANG_DATA.map(language => language.code));
@@ -15,13 +15,16 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
     let playbackGeneration = 0, playbackQueue = Promise.resolve(), releasing = Promise.resolve(), pendingAudioBytes = 0;
     let deviceReport = { inputs: [], outputs: [] };
     let feedback = { message: '准备就绪', kind: 'info' };
-    let config = { meetingName: '', targetLanguage: 'zh', useSystemAudio: true, useMicAudio: false, deviceId: 'default', audioEnabled: true, hotwords: [] };
+    let config = { mode: 'listening', meetingName: '', targetLanguage: 'zh', useSystemAudio: true, useMicAudio: false, deviceId: 'default', audioEnabled: true, hotwords: [] };
     let mediaCapabilities = { systemAudio: false, isolatedTts: false, ...capabilities };
     const segments = new Map(), waiters = new Set();
     const elapsed = () => accumulatedMs + (phase === 'running' ? now() - activeStart : 0);
     const sortedSegments = () => [...segments.values()].sort((a, b) => a.sequence_order - b.sequence_order);
+    function currentRouting(next = audioRouting) {
+        return { ...next, originalGain: config.mode === 'outgoing' && activePhases.has(phase) ? next.outgoingOriginalGain : next.originalGain };
+    }
     function audioRoutingSnapshot() {
-        return { ...audioRouting, ...(mixBus?.getSnapshot?.() || {}), bufferedMs: player?.getDiagnostics?.().bufferedMs ?? 0, maxBufferedMs: player?.getDiagnostics?.().maxBufferedMs ?? 10000 };
+        return { ...audioRouting, ...(mixBus?.getSnapshot?.() || {}), originalGain: currentRouting().originalGain, bufferedMs: player?.getDiagnostics?.().bufferedMs ?? 0, maxBufferedMs: player?.getDiagnostics?.().maxBufferedMs ?? 10000 };
     }
     function snapshot(includeSegments = true) {
         return { phase, sessionId, config: { ...config }, ttsEnabled, ttsVolume, audioRouting: audioRoutingSnapshot(), elapsedMs: elapsed(), note, feedback: { ...feedback }, capabilities: { ...mediaCapabilities }, ...(includeSegments ? { segments: sortedSegments() } : {}) };
@@ -30,25 +33,37 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
     function inform(message, kind = 'info') { feedback = { message, kind }; publish({ type: 'feedback', ...feedback }); }
     if (createMixBus) mixBus = createMixBus({
         routing: audioRouting,
-        onState: state => publish({ type: 'audio-routing', audioRouting: { ...state, bufferedMs: player?.getDiagnostics?.().bufferedMs ?? 0, maxBufferedMs: 10000 } }),
+        onState: state => publish({ type: 'audio-routing', audioRouting: { ...state, originalGain: currentRouting().originalGain, bufferedMs: player?.getDiagnostics?.().bufferedMs ?? 0, maxBufferedMs: 10000 } }),
         onError: error => inform('音频输出：' + error.message, 'warning'),
     });
     async function refreshDevices() {
         if (!enumerateDevices) return deviceReport;
         deviceReport = await enumerateDevices();
         const patch = {};
+        const outgoing = config.mode === 'outgoing' && activePhases.has(phase);
+        const pair = outgoing ? resolveDDTransVirtualPair(deviceReport) : null;
+        if (outgoing && !pair.available) await mixBus?.setPlaybackAllowed(false, pair.message);
         for (const [idKey, labelKey, devices] of [
             ['monitorDeviceId', 'monitorDeviceLabel', deviceReport.outputs],
             ['virtualRenderDeviceId', 'virtualRenderDeviceLabel', deviceReport.outputs],
             ['virtualCaptureDeviceId', 'virtualCaptureDeviceLabel', deviceReport.inputs],
         ]) {
+            if (outgoing && idKey.startsWith('virtual')) continue;
             const resolved = resolveAudioDevice(devices, audioRouting[idKey], audioRouting[labelKey]);
             if (!resolved.missing) { patch[idKey] = resolved.deviceId; patch[labelKey] = resolved.label; }
         }
+        if (pair?.available) Object.assign(patch, {
+            virtualRenderDeviceId: pair.render.deviceId, virtualRenderDeviceLabel: pair.render.label,
+            virtualCaptureDeviceId: pair.capture.deviceId, virtualCaptureDeviceLabel: pair.capture.label,
+        });
         const next = normalizeAudioRouting({ ...audioRouting, ...patch });
-        if (JSON.stringify(next) !== JSON.stringify(audioRouting)) { await saveAudioSettings(next); audioRouting = next; await mixBus?.setRouting(next); }
+        if (JSON.stringify(next) !== JSON.stringify(audioRouting)) { await saveAudioSettings(next); audioRouting = next; await mixBus?.setRouting(currentRouting()); }
         await mixBus?.updateDevices(deviceReport);
         publish({ type: 'audio-devices', devices: deviceReport });
+        if (outgoing && !pair.available && phase === 'running') {
+            await pause();
+            inform('DDTrans 虚拟麦克风不可用，已暂停发言翻译。请恢复设备后继续。', 'warning');
+        }
         return deviceReport;
     }
     function checkInputLoop(nextConfig, routing) {
@@ -57,15 +72,23 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
         const virtual = deviceReport.inputs.find(device => device.deviceId === routing.virtualCaptureDeviceId);
         if (nextConfig.deviceId === routing.virtualCaptureDeviceId || (nextConfig.deviceId === 'default' && selected?.label.replace(/^Default - /, '') === virtual?.label)) throw new Error('同传输入选中了正在输出的虚拟麦克风，请改选真实麦克风，避免重复翻译');
     }
-    async function applyAudioRouting(patch) {
+    async function applyAudioRouting(patch, inputConfig = config) {
         const validated = validateAudioRoutingPatch(patch);
+        if (config.mode === 'outgoing' && activePhases.has(phase) && Object.hasOwn(validated, 'originalGain')) {
+            validated.outgoingOriginalGain = validated.originalGain;
+            delete validated.originalGain;
+        }
         const next = normalizeAudioRouting({ ...audioRouting, ...validated });
-        checkInputLoop(config, next);
+        if (config.mode === 'outgoing' && activePhases.has(phase) && Object.keys(validated).some(key => key.startsWith('virtual'))) {
+            const pair = resolveDDTransVirtualPair(deviceReport);
+            if (!pair.available || !next.virtualOutputEnabled || next.virtualRenderDeviceId !== pair.render.deviceId || next.virtualCaptureDeviceId !== pair.capture.deviceId) throw new Error('发言翻译固定使用 DDTrans 虚拟麦克风。请先停止发言翻译，再更改输出设备。');
+        }
+        checkInputLoop(inputConfig, next);
         await saveAudioSettings(next);
         audioRouting = next; ttsVolume = next.ttsVolume;
         ttsEnabled = next.ttsEnabled && !TEXT_ONLY_LANGS.includes(config.targetLanguage) && (!activePhases.has(phase) || config.audioEnabled);
         player?.setVolume(ttsVolume);
-        await mixBus?.setRouting(next);
+        await mixBus?.setRouting(currentRouting());
         if (!ttsEnabled) await releasePlayer();
         broadcast();
     }
@@ -126,6 +149,14 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
         if (stream) await mixBus?.connectTranslatedStream(stream);
     }
     async function makeCapture() {
+        if (config.mode === 'outgoing') {
+            const source = resolveOutgoingMicrophone(deviceReport, config.deviceId);
+            if (!source.available) throw new Error(source.message);
+            const pair = resolveDDTransVirtualPair(deviceReport);
+            if (!pair.available) throw new Error(pair.message);
+            if (audioRouting.virtualRenderDeviceId !== pair.render.deviceId || audioRouting.virtualCaptureDeviceId !== pair.capture.deviceId || !audioRouting.virtualOutputEnabled) throw new Error('DDTrans 虚拟麦克风配对已改变，请停止后重新开始发言翻译。');
+            await mixBus.setRouting(currentRouting());
+        }
         const current = await createCapture({
             useSystemAudio: config.useSystemAudio, useMicAudio: config.useMicAudio, deviceId: config.deviceId, initiallyPaused: true,
             onFrame({ pcm }) {
@@ -152,6 +183,7 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
         try {
             await mixBus?.setPlaybackAllowed(!config.useSystemAudio || mediaCapabilities.isolatedTts, config.useSystemAudio && !mediaCapabilities.isolatedTts ? '当前系统无法排除本应用声音，已暂停监听及虚拟输出以免重复采集' : '');
             if (current.stream) await mixBus?.connectOriginalStream(current.stream);
+            if (config.mode === 'outgoing' && !mixBus.getSnapshot().virtualOutputReady) throw new Error(mixBus.getSnapshot().virtualError || '无法打开 DDTrans Virtual Input，发言翻译尚未启动。');
             return current;
         } catch (error) { await current.stop(); throw error; }
     }
@@ -186,8 +218,14 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
     }
     function normalizeOptions(options) {
         const next = { ...config, ...options };
+        if (!['listening', 'outgoing'].includes(next.mode)) throw new Error('不支持的同传模式');
         if (!languages.has(next.targetLanguage)) throw new Error('请选择支持的目标语言');
         next.useSystemAudio = Boolean(next.useSystemAudio); next.useMicAudio = Boolean(next.useMicAudio);
+        if (next.mode === 'outgoing') {
+            if (next.useSystemAudio || !next.useMicAudio) throw new Error('发言翻译只能使用真实麦克风，不能采集系统音频。');
+            if (TEXT_ONLY_LANGS.includes(next.targetLanguage)) throw new Error('发言翻译请选择支持译音播报的目标语言');
+            next.audioEnabled = true;
+        }
         if (!next.useSystemAudio && !next.useMicAudio) throw new Error('请选择至少一个输入声源');
         if (next.useSystemAudio && !mediaCapabilities.systemAudio) throw new Error('当前系统不支持桌面音频采集，请使用麦克风');
         next.audioEnabled = Boolean(next.audioEnabled) && !TEXT_ONLY_LANGS.includes(next.targetLanguage);
@@ -197,11 +235,39 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
         return next;
     }
     async function start(options = {}) {
-        if (activePhases.has(phase)) return;
+        const mode = options.mode ?? 'listening';
+        if (activePhases.has(phase)) {
+            if (mode !== config.mode) throw new Error('请先停止并保存当前同传，再切换发言翻译或收听同传。');
+            return;
+        }
         await releasing;
         await refreshDevices();
-        config = normalizeOptions(options);
-        checkInputLoop(config, audioRouting);
+        let nextConfig;
+        if (mode === 'outgoing') {
+            const pair = resolveDDTransVirtualPair(deviceReport);
+            if (!pair.available) throw new Error(pair.message);
+            const source = resolveOutgoingMicrophone(deviceReport, options.deviceId || 'default');
+            if (!source.available) throw new Error(source.message);
+            if (!mixBus) throw new Error('音频发送服务尚未就绪，无法启动发言翻译。');
+            nextConfig = normalizeOptions({
+                ...options, mode, targetLanguage: options.targetLanguage ?? audioRouting.outgoingTargetLanguage,
+                useSystemAudio: false, useMicAudio: true, deviceId: source.microphone.deviceId, audioEnabled: true,
+                meetingName: options.meetingName || '发言翻译 ' + new Date().toLocaleString('zh-CN'),
+                hotwords: options.hotwords || loadHotwords(),
+            });
+            await applyAudioRouting({
+                outgoingOriginalGain: 0, translatedGain: audioRouting.translatedGain || DEFAULT_AUDIO_ROUTING.translatedGain,
+                ttsEnabled: true, ttsVolume: audioRouting.ttsVolume || DEFAULT_AUDIO_ROUTING.ttsVolume,
+                virtualOutputEnabled: true,
+                virtualRenderDeviceId: pair.render.deviceId, virtualRenderDeviceLabel: pair.render.label,
+                virtualCaptureDeviceId: pair.capture.deviceId, virtualCaptureDeviceLabel: pair.capture.label,
+            }, nextConfig);
+        } else {
+            nextConfig = normalizeOptions({ ...options, mode });
+            if (config.mode === 'outgoing' && audioRouting.virtualOutputEnabled) await applyAudioRouting({ virtualOutputEnabled: false }, nextConfig);
+        }
+        checkInputLoop(nextConfig, audioRouting);
+        config = nextConfig;
         clearTimeout(noteTimer); noteDirty = false;
         stopping = null; sessionId = null; segments.clear(); note = ''; accumulatedMs = 0;
         ttsEnabled = config.audioEnabled && audioRouting.ttsEnabled;
@@ -231,7 +297,7 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
                 }
             };
             await ready; setPhase('running'); capture?.resume();
-            inform(config.useSystemAudio && !mediaCapabilities.isolatedTts && config.audioEnabled ? '当前系统无法隔离译音，译音保存后可在记录中回放。' : '同传中，原文、译文和录音持续保存。', config.useSystemAudio && !mediaCapabilities.isolatedTts && config.audioEnabled ? 'warning' : 'info');
+            inform(config.mode === 'outgoing' ? '发言翻译中。请在会议或游戏中选择 DDTrans Virtual Microphone。' : config.useSystemAudio && !mediaCapabilities.isolatedTts && config.audioEnabled ? '当前系统无法隔离译音，译音保存后可在记录中回放。' : '同传中，原文、译文和录音持续保存。', config.useSystemAudio && !mediaCapabilities.isolatedTts && config.audioEnabled ? 'warning' : 'info');
         } catch (error) {
             await releaseMedia();
             const old = socket; socket = null; old?.close(); setPhase('failed'); inform(error.message, 'error');
@@ -248,6 +314,7 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
     async function resume() {
         if (phase !== 'paused') return;
         try {
+            if (config.mode === 'outgoing') await refreshDevices();
             capture = await makeCapture(); capture.pause();
             const resumed = waitFor(message => message.type === 'state' && message.state === 'running', 10000);
             send({ type: 'resume' }); await resumed; capture.resume(); inform('已恢复同传。');
@@ -266,13 +333,22 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
                 const stopped = waitFor(message => message.type === 'stopped');
                 send({ type: 'stop' }); await stopped;
             } catch (error) { notify({ type: 'error', message: error.message, closed: true }); setPhase('failed'); inform(error.message, 'error'); throw error; }
-            finally { const old = socket; socket = null; old?.close(); await releaseMedia(); }
+            finally {
+                const old = socket; socket = null; old?.close(); await releaseMedia();
+                if (config.mode === 'outgoing' && audioRouting.virtualOutputEnabled) await applyAudioRouting({ virtualOutputEnabled: false });
+            }
         })();
         return stopping;
     }
     async function switchSource(options) {
         const previous = config;
         const next = normalizeOptions({ ...config, ...options });
+        if (next.mode !== config.mode && activePhases.has(phase)) throw new Error('请先停止当前同传，再切换模式。');
+        if (next.mode === 'outgoing') {
+            const source = resolveOutgoingMicrophone(deviceReport, next.deviceId);
+            if (!source.available) throw new Error(source.message);
+            next.deviceId = source.microphone.deviceId;
+        }
         checkInputLoop(next, audioRouting);
         if (!['running', 'paused'].includes(phase)) { config = next; broadcast(); return; }
         const wasRunning = phase === 'running';
@@ -288,6 +364,10 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
         send({ type: 'note', content: note }); await saved; noteDirty = false;
     }
     async function command(name, payload = {}) {
+        if (['stop', 'resume'].includes(name)) {
+            if (payload.mode !== undefined && payload.mode !== config.mode) throw new Error('当前同传模式已改变，请刷新设置后重试。');
+            if (payload.sessionId !== undefined && payload.sessionId !== sessionId) throw new Error('当前同传会话已改变，请刷新设置后重试。');
+        }
         if (name === 'start') await start(payload);
         else if (name === 'pause') await pause();
         else if (name === 'resume') await resume();
@@ -308,6 +388,7 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
             return mixBus.testTone(payload);
         } else if (name === 'set-target') {
             if (!languages.has(payload.targetLanguage)) throw new Error('请选择支持的目标语言');
+            if (config.mode === 'outgoing' && TEXT_ONLY_LANGS.includes(payload.targetLanguage)) throw new Error('发言翻译请选择支持译音播报的目标语言');
             if (payload.targetLanguage === config.targetLanguage) return snapshot();
             const previousPhase = phase;
             const next = { ...config, targetLanguage: payload.targetLanguage, audioEnabled: !TEXT_ONLY_LANGS.includes(payload.targetLanguage) };

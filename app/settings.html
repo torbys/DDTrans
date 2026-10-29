@@ -27,7 +27,7 @@
                 <div>
                     <p class="eyebrow">声音与设备</p>
                     <h1>音频设置</h1>
-                    <p class="intro-copy">调好自己听到的译音，再把原声和译音发送给游戏或会议。更改会自动保存，正在进行的同传也会同步更新。</p>
+                    <p class="intro-copy">管理自己听到的声音，以及发送给会议或游戏的译音。更改会自动保存；默认发送语言在下次开始发言翻译时生效。</p>
                 </div>
                 <div class="intro-actions">
                     <button class="button secondary" id="refreshDevicesBtn" type="button">刷新设备</button>
@@ -35,6 +35,35 @@
                     <button class="button secondary" id="permissionSettingsBtn" type="button" hidden>打开麦克风权限设置</button>
                 </div>
             </div>
+
+            <section class="card outgoing-card" aria-labelledby="outgoingHeading">
+                <div class="card-heading">
+                    <div>
+                        <h2 id="outgoingHeading">发言翻译</h2>
+                        <p class="device-name">DDTrans Virtual Microphone</p>
+                    </div>
+                    <span class="status-pill" id="outgoingStatus">正在读取</span>
+                </div>
+                <p class="card-help">自动识别你说的语言，将译音发送给对方。开始时原声静音；需要加入原声时可在下方调节。请在会议或游戏的麦克风列表中选择 DDTrans Virtual Microphone。</p>
+                <div class="form-grid two-columns">
+                    <div class="field">
+                        <label for="outgoingTargetLanguage">默认发送语言</label>
+                        <select id="outgoingTargetLanguage" aria-describedby="outgoingLanguageHint"></select>
+                        <small id="outgoingLanguageHint">选择对方听到的语言，自动保存并在下次开始时使用；不改变当前同传的语言。</small>
+                    </div>
+                    <div class="field outgoing-source">
+                        <span class="field-label">输入麦克风</span>
+                        <strong id="outgoingMicrophone">正在读取</strong>
+                        <small>自动使用默认真实麦克风，不采集电脑声音或虚拟输入。本地监听保持你的设置。</small>
+                    </div>
+                </div>
+                <p id="outgoingStatusDetail" class="inline-status" role="status">正在检查 DDTrans 音频设备。</p>
+                <div class="button-row">
+                    <button class="button primary" id="startOutgoingBtn" type="button" disabled>开始发言翻译</button>
+                    <button class="button secondary" id="stopOutgoingBtn" type="button" hidden>停止并保存</button>
+                </div>
+                <p id="outgoingActionStatus" class="inline-status" role="status" hidden></p>
+            </section>
 
             <div class="settings-columns">
                 <section class="card">
@@ -140,9 +169,9 @@
                         <small>例如 CABLE Input。没有虚拟设备时，普通扬声器仅用于试播。</small>
                     </div>
                     <div class="field">
-                        <label for="targetLanguage">译音语言</label>
+                        <label for="targetLanguage">当前同传语言</label>
                         <select id="targetLanguage"></select>
-                        <small>与当前同传共用；运行中更改会保存当前会话，再以新语言继续。</small>
+                        <small>收听同传运行中更改会保存当前会话，再以新语言继续。发言翻译的默认语言在上方单独保存。</small>
                     </div>
                     <div class="field">
                         <label for="virtualCaptureDevice">外部软件选择</label>
