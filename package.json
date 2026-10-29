@@ -14,7 +14,14 @@
     "verify:capture": "electron scripts/verify-capture.cjs",
     "verify:live": "electron scripts/verify-electron.cjs",
     "verify:audio-routing": "electron scripts/verify-audio-routing.cjs",
-    "verify:desktop": "electron scripts/verify-desktop.cjs"
+    "verify:desktop": "electron scripts/verify-desktop.cjs",
+    "driver:restore": "pwsh -NoProfile -File native/virtual-microphone/restore-toolchain.ps1",
+    "driver:build": "pwsh -NoProfile -File native/virtual-microphone/build.ps1",
+    "driver:test": "pwsh -NoProfile -File native/virtual-microphone/build.ps1 -TestOnly",
+    "driver:check": "pwsh -NoProfile -File native/virtual-microphone/install.ps1",
+    "driver:sign-dev": "pwsh -NoProfile -File native/virtual-microphone/sign-development.ps1",
+    "driver:probe": "data\\driver-development\\build\\ddtrans-probe.exe",
+    "driver:package": "pwsh -NoProfile -File native/virtual-microphone/package-development.ps1"
   },
   "devDependencies": {
     "electron": "45.1.0"

@@ -1,0 +1,8 @@
+build/
+*.obj
+*.pdb
+*.sys
+*.cat
+*.cer
+*.pfx
+*.p12
