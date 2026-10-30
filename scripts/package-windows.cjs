@@ -49,7 +49,7 @@ fs.mkdirSync(output, { recursive: true });
 const builderTemp = fs.mkdtempSync(path.join(output, 'ddtrans-package-'));
 const builderCache = path.join(builderTemp, 'electron-builder-cache');
 try {
-  run(process.execPath, [builder, ...builderArguments], {
+  run(process.execPath, [builder, ...builderArguments, '--publish', 'never'], {
     ...process.env,
     ELECTRON_BUILDER_CACHE: builderCache,
     TEMP: builderTemp,
