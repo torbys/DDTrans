@@ -68,6 +68,8 @@ async function startService(config, dependencies = {}) {
       if (request.headers['sec-fetch-site'] === 'cross-site') return json(response, 403, { error: '请求来源不受支持' });
       if (url.pathname === '/api/health') return json(response, 200, { ready: true, model: runtimeConfig.model, active_sessions: active.size });
       if (url.pathname === '/api/capabilities') return json(response, 200, { model: runtimeConfig.model, transports: transportCapabilities(), source_language: 'auto', speaker_detection: true, input_sample_rate: 16000, output_sample_rate: 24000 });
+      if (url.pathname === '/api/hotwords' && request.method === 'GET') return json(response, 200, store.getHotwords());
+      if (url.pathname === '/api/hotwords' && request.method === 'PUT') return json(response, 200, store.setHotwords(await body(request)));
       if (url.pathname === '/api/sessions' && request.method === 'GET') {
         return json(response, 200, store.listSessions({ limit: Number(url.searchParams.get('limit') || 50), offset: Number(url.searchParams.get('offset') || 0), search: url.searchParams.get('search') || '', sort: url.searchParams.get('sort') || 'newest' }));
       }
@@ -116,7 +118,7 @@ async function startService(config, dependencies = {}) {
       const inside = path.relative(base, file);
       if (inside.startsWith('..') || path.isAbsolute(inside)) return json(response, 403, { error: '无效路径' });
       const types = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
-      response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; font-src 'self' https://cdn.jsdelivr.net data:; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'");
+      response.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self'; img-src 'self' data:; media-src 'self' blob:; connect-src 'self'; object-src 'none'; base-uri 'self'");
       return serveFile(request, response, file, types[path.extname(file)] || 'application/octet-stream');
     } catch (error) {
       if (response.headersSent) return response.destroy();
@@ -134,6 +136,7 @@ async function startService(config, dependencies = {}) {
     let control = Promise.resolve();
     let lastPong = Date.now();
     const emit = event => {
+      if (event.type === 'stopped' && session) active.delete(session.id);
       if (ws.readyState !== WebSocket.OPEN) return;
       if (ws.bufferedAmount > 512 * 1024) { ws.close(1013, '客户端处理过慢'); return; }
       ws.send(JSON.stringify(event));
@@ -159,7 +162,7 @@ async function startService(config, dependencies = {}) {
         else if (message.type === 'note') session.saveNote(message.content);
         else if (message.type === 'stop') { await session.stop(); active.delete(session.id); }
         else throw new Error('未知控制消息');
-      }).catch(error => { emit({ type: 'error', message: error.message }); if (session?.state === 'stopped') active.delete(session.id); });
+      }).catch(error => { if (!error.reported) emit({ type: 'error', message: error.message }); if (session?.state === 'stopped') active.delete(session.id); });
     });
     ws.on('error', () => {});
     ws.on('close', () => {

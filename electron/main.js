@@ -592,7 +592,7 @@ function getConnectionSettingsStore() {
 
 function loadRuntimeConfig() {
   const dataDir = app.isPackaged ? path.join(app.getPath('userData'), 'data') : undefined;
-  const config = loadConfig({ root: app.getAppPath(), dataDir, loadEnv: !app.isPackaged, env: app.isPackaged ? {} : process.env });
+  const config = loadConfig({ root: path.resolve(__dirname, '..'), dataDir, loadEnv: !app.isPackaged, env: app.isPackaged ? {} : process.env });
   if (!app.isPackaged) return config;
   try {
     const saved = getConnectionSettingsStore().get();

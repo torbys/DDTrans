@@ -1,0 +1,6 @@
+.translation-language { display: flex; align-items: center; gap: 12px; min-width: 0; color: #666; font-size: 13px; }
+.translation-language select { min-width: 180px; max-width: 100%; border: 1px solid #e5e5e5; border-radius: 10px; padding: 10px 32px 10px 14px; background: #fff; color: #333; font: inherit; font-size: 14px; cursor: pointer; }
+.translation-language select:focus-visible { outline: 2px solid #6678ec; outline-offset: 2px; }
+.translation-language select:disabled { opacity: .6; cursor: default; }
+.modal-section .translation-language select { width: 100%; }
+.modal-select-item { width: 100%; border: 0; background: transparent; text-align: left; font: inherit; }

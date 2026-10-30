@@ -3,26 +3,21 @@ import { buildVolumeBars, updateVolumeBars } from './utils.js';
 const byId = id => document.getElementById(id);
 const overlay = byId('createModalOverlay');
 const input = byId('meetingNameInput');
-const menu = byId('modalTargetLangMenu');
+const languageSelect = byId('modalTargetLanguage');
 const deviceMenu = byId('modalAudioDeviceMenu');
 const level = byId('modalVolumeBars');
 const status = byId('modalAudioTestStatus');
 let target = 'zh', deviceId = 'default', testStream, context, animation, generation = 0;
 input.maxLength = 200;
-byId('modalSourceLangName').textContent = '自动识别'; byId('modalSourceLangNative').textContent = 'Auto';
-byId('modalSourceLangTrigger').setAttribute('aria-disabled', 'true'); byId('modalSourceLangTrigger').style.pointerEvents = 'none';
-byId('modalLangSwapBtn').hidden = true;
 buildVolumeBars(level, 16);
-function closeMenus() { menu.classList.remove('show'); deviceMenu.classList.remove('show'); }
+function closeMenus() { deviceMenu.classList.remove('show'); }
 function updateLanguage() {
-    const language = LANG_DATA.find(item => item.code === target);
-    byId('modalTargetLangName').textContent = language.name; byId('modalTargetLangNative').textContent = language.native;
+    languageSelect.value = target;
 }
 for (const language of LANG_DATA) {
-    const item = document.createElement('button'); item.type = 'button'; item.className = 'modal-select-item'; item.textContent = language.name + ' · ' + language.native;
-    item.addEventListener('click', () => { target = language.code; updateLanguage(); closeMenus(); }); menu.append(item);
+    languageSelect.add(new Option(language.name + ' · ' + language.native, language.code));
 }
-byId('modalTargetLangTrigger').addEventListener('click', event => { event.stopPropagation(); const open = !menu.classList.contains('show'); closeMenus(); menu.classList.toggle('show', open); });
+languageSelect.addEventListener('change', () => { target = languageSelect.value; });
 byId('modalAudioDeviceTrigger').addEventListener('click', event => { event.stopPropagation(); const open = !deviceMenu.classList.contains('show'); closeMenus(); deviceMenu.classList.toggle('show', open); });
 async function stopTest() {
     generation++; if (animation) cancelAnimationFrame(animation); animation = null;

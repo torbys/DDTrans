@@ -59,9 +59,10 @@ const state = {
     audioDraft: {},
 };
 
-const runningPhases = new Set(['running', 'pausing', 'paused']);
-const busyPhases = new Set(['starting', 'pausing', 'stopping']);
+const runningPhases = new Set(['running', 'reconnecting', 'pausing', 'paused']);
+const busyPhases = new Set(['starting', 'reconnecting', 'pausing', 'stopping']);
 const phaseLabels = {
+    reconnecting: '正在重连',
     idle: '未开始',
     starting: '正在准备',
     running: '正在采集',

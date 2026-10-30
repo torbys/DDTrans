@@ -12,8 +12,8 @@ let pending = {}, sending = {}, saving, saveTimer, devicesLoaded = false, failed
 let outgoingPending = false;
 const values = () => ({ ...settings, ...sending, ...pending });
 const percent = value => `${Math.round(value * 100)}%`;
-const busy = () => ['starting', 'pausing', 'stopping'].includes(snapshot.phase);
-const sessionActive = () => ['starting', 'running', 'pausing', 'paused', 'stopping'].includes(snapshot.phase);
+const busy = () => ['starting', 'reconnecting', 'pausing', 'stopping'].includes(snapshot.phase);
+const sessionActive = () => ['starting', 'running', 'reconnecting', 'pausing', 'paused', 'stopping'].includes(snapshot.phase);
 const outgoingActive = () => sessionActive() && snapshot.config?.mode === 'outgoing';
 
 function status(id, message, error = false) { const node = byId(id); node.textContent = message; node.dataset.error = String(error); }
@@ -87,7 +87,7 @@ function renderOutgoing() {
     start.textContent = ownSession && snapshot.phase === 'paused' ? '继续发言翻译' : ownSession ? '发言翻译中' : '开始发言翻译';
     start.disabled = outgoingPending || busy() || !devicesLoaded || !pair.available || !source.available || (sessionActive() && (!ownSession || snapshot.phase !== 'paused'));
     byId('stopOutgoingBtn').hidden = !ownSession;
-    byId('stopOutgoingBtn').disabled = outgoingPending || busy();
+    byId('stopOutgoingBtn').disabled = outgoingPending || ['starting', 'stopping'].includes(snapshot.phase);
 }
 function virtualStatus() {
     const value = values(), runtime = snapshot.audioRouting || {};

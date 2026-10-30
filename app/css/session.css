@@ -11,12 +11,12 @@
 .session-actions button { border: 1px solid #cfdad6; border-radius: 6px; background: #fff; padding: 6px 10px; color: #315b4a; cursor: pointer; font: inherit; font-size: 12px; }
 .custom-select-item, .modal-select-item { border: 0; width: 100%; background: transparent; text-align: left; font: inherit; cursor: pointer; }
 button:disabled { opacity: .5; cursor: wait; }
-#sourceLangTrigger { cursor: default; }
-#sourceLangTrigger .arrow, #modalSourceLangTrigger .modal-select-arrow { display: none; }
 #sessionStatus, #timerDisplay, #fcTimer { font-variant-numeric: tabular-nums; }
 #modelDropdown { cursor: default; }
 #sourceSpeakerIcon, #targetSpeakerIcon { cursor: pointer; }
-.model-dropdown,
-#sourceLangTrigger { cursor: default; }
+.model-dropdown { cursor: default; }
+.title-bar-nav { flex-shrink: 0; }
+.title-bar-nav i { font-size: 20px; line-height: 1; }
+.session-feedback:empty { display: none; }
 
 .asp-sub-item { width: 100%; border: 0; background: transparent; text-align: left; font: inherit; }

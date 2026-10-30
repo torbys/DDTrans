@@ -21,10 +21,11 @@ export function showFeedback(message, kind = 'info') {
     const element = document.getElementById('sessionFeedback');
     element.textContent = message; element.dataset.kind = kind;
     element.setAttribute('role', kind === 'error' ? 'alert' : 'status');
+    document.getElementById('sessionStatusRow').hidden = !message && document.getElementById('sessionActions').hidden;
 }
 function setPhase(next) {
     phase = next;
-    const busy = ['starting', 'pausing', 'stopping'].includes(next);
+    const busy = ['starting', 'reconnecting', 'pausing', 'stopping'].includes(next);
     notes().readOnly = busy;
     lockSourceControls(busy || sourceSwitching);
     state.setIsRunning(!['idle', 'stopped', 'failed'].includes(next));
@@ -36,9 +37,11 @@ function setPhase(next) {
     dom.fcPauseBtn.setAttribute('aria-label', next === 'paused' ? '恢复同传' : '暂停同传');
     dom.fcPauseBtn.innerHTML = next === 'paused' ? '<i class="ri-play-fill"></i>' : '<i class="ri-pause-fill"></i>';
     dom.floatingControls.classList.toggle('show', state.isRunning && next !== 'starting');
-    const labels = { idle: '准备就绪', starting: '正在连接', running: '同传中 · 实时保存', pausing: '正在暂停', paused: '已关闭收音 · 内容已保存', stopping: '正在接收尾段并保存', stopped: '已保存', failed: '连接中断 · 查看历史记录' };
+    const labels = { idle: '准备就绪', starting: '正在连接', running: '同传中 · 实时保存', reconnecting: '正在重连 · 本地录音继续保存', pausing: '正在暂停', paused: '已关闭收音 · 内容已保存', stopping: '正在接收尾段并保存', stopped: '已保存', failed: '连接失败 · 查看配置或记录' };
     document.getElementById('sessionStatus').textContent = labels[next] || next;
     document.getElementById('sessionActions').hidden = !['stopped', 'failed'].includes(next);
+    if (['idle', 'starting', 'running'].includes(next)) showFeedback('');
+    else document.getElementById('sessionStatusRow').hidden = false;
     dom.sourceSpeakerIcon.style.display = sessionId && ['paused', 'stopped'].includes(next) ? 'inline' : 'none';
     dom.targetSpeakerIcon.style.display = state.aiVoiceEnabled && ['paused', 'stopped'].includes(next) ? 'inline' : 'none';
     document.dispatchEvent(new CustomEvent('session-state', { detail: next }));

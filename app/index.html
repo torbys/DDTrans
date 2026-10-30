@@ -5,10 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI 同声传译助手</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.min.css">
+    <link rel="stylesheet" href="./vendor/remixicon/remixicon.css">
     
     <link rel="stylesheet" href="./css/style.css">
     <link rel="stylesheet" href="./css/session.css">
+    <link rel="stylesheet" href="./css/language-select.css">
 </head>
 
 <body>
@@ -25,8 +26,8 @@
             </div>
             <div class="title-bar-right">
                 <span class="timer" id="timerDisplay">00:00:00</span>
-                <button class="title-bar-nav" id="settingsBtn" type="button" title="设置音频设备与混音">音频设置</button>
-                <button class="title-bar-nav" id="overlayBtn" title="切换悬浮窗，保持同传" aria-label="切换悬浮窗">悬浮窗</button>
+                <button class="title-bar-nav" id="settingsBtn" type="button" title="系统设置" aria-label="系统设置"><i class="ri-settings-3-line" aria-hidden="true"></i></button>
+                <button class="title-bar-nav" id="overlayBtn" title="切换悬浮窗，保持同传" aria-label="切换悬浮窗"><i class="ri-picture-in-picture-2-line" aria-hidden="true"></i></button>
                 <span class="user-icon"><i class="ri-user-smile-line"></i></span>
                 <button class="title-bar-btn" id="minimizeBtn" title="最小化">
                     <i class="ri-subtract-line"></i>
@@ -47,32 +48,10 @@
                     <img src="../resources/icons/千问logo.png" alt="千问" class="model-logo">
                     <span>Qwen 3.8 同传</span>
                 </div>
-                <div class="lang-switch" id="langSwitch">
-                    <!-- 源语言自定义下拉 -->
-                    <div class="custom-select" id="sourceLangDropdown">
-                        <div class="custom-select-trigger" id="sourceLangTrigger">
-                            <span class="lang-icon"><i class="ri-global-line"></i></span>
-                            <span class="lang-name" id="sourceLangName">自动识别</span>
-                            <span class="lang-native" id="sourceLangNative">Auto</span>
-                        </div>
-                        <div class="custom-select-menu" id="sourceLangMenu"></div>
-                    </div>
-
-                    <button class="lang-swap-btn" id="langSwapBtn" title="源语言自动识别" hidden>
-                        <i class="ri-arrow-left-right-line"></i>
-                    </button>
-
-                    <!-- 目标语言自定义下拉 -->
-                    <div class="custom-select" id="targetLangDropdown">
-                        <div class="custom-select-trigger" id="targetLangTrigger">
-                            <span class="lang-icon"><i class="ri-global-line"></i></span>
-                            <span class="lang-name" id="targetLangName">中文</span>
-                            <span class="lang-native" id="targetLangNative">中文</span>
-                            <i class="ri-arrow-up-s-line arrow"></i>
-                        </div>
-                        <div class="custom-select-menu" id="targetLangMenu"></div>
-                    </div>
-                </div>
+                <label class="translation-language">
+                    <span>想听见的语言</span>
+                    <select id="targetLanguageSelect" aria-label="想听见的语言"></select>
+                </label>
             </div>
             <div class="toolbar-center">
                 <div class="ai-voice-wrapper" id="aiVoiceWrapper">
@@ -101,8 +80,8 @@
             </div>
         </div>
 
-        <div class="session-status-row">
-            <div class="session-feedback" id="sessionFeedback" role="status">Qwen 3.8 自动识别源语言，并按本次会话的说话人分段。</div>
+        <div class="session-status-row" id="sessionStatusRow" hidden>
+            <div class="session-feedback" id="sessionFeedback" role="status"></div>
             <div class="session-actions" id="sessionActions" hidden>
                 <button id="viewSavedBtn" type="button">查看记录</button>
                 <button id="newSessionBtn" type="button">再次开始同传</button>

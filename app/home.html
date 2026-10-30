@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>DDTrans - AI同声传译助手</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/remixicon@4.2.0/fonts/remixicon.min.css">
+    <link rel="stylesheet" href="./vendor/remixicon/remixicon.css">
     <link rel="stylesheet" href="./css/home.css">
+    <link rel="stylesheet" href="./css/language-select.css">
 </head>
 <body>
     <div class="app">
@@ -77,34 +78,11 @@
                     <input type="text" class="modal-input" id="meetingNameInput" placeholder="请输入会议名称">
                 </div>
 
-                <!-- 语言选择 -->
                 <div class="modal-section">
-                    <label class="modal-label">语言选择</label>
-                    <div class="modal-lang-row">
-                        <div class="modal-custom-select" id="modalSourceLangDropdown">
-                            <div class="modal-select-trigger" id="modalSourceLangTrigger">
-                                <span class="modal-select-icon"><i class="ri-global-line"></i></span>
-                                <span class="modal-select-name" id="modalSourceLangName">英语</span>
-                                <span class="modal-select-native" id="modalSourceLangNative">English</span>
-                                <i class="ri-arrow-up-s-line modal-select-arrow"></i>
-                            </div>
-                            <div class="modal-select-menu" id="modalSourceLangMenu"></div>
-                        </div>
-
-                        <button class="modal-swap-btn" id="modalLangSwapBtn" title="交换语言">
-                            <i class="ri-arrow-left-right-line"></i>
-                        </button>
-
-                        <div class="modal-custom-select" id="modalTargetLangDropdown">
-                            <div class="modal-select-trigger" id="modalTargetLangTrigger">
-                                <span class="modal-select-icon"><i class="ri-global-line"></i></span>
-                                <span class="modal-select-name" id="modalTargetLangName">中文</span>
-                                <span class="modal-select-native" id="modalTargetLangNative">中文</span>
-                                <i class="ri-arrow-up-s-line modal-select-arrow"></i>
-                            </div>
-                            <div class="modal-select-menu" id="modalTargetLangMenu"></div>
-                        </div>
-                    </div>
+                    <label class="modal-label" for="modalTargetLanguage">想听见的语言</label>
+                    <label class="translation-language">
+                        <select id="modalTargetLanguage" aria-label="想听见的语言"></select>
+                    </label>
                 </div>
 
                 <!-- 声音输入测试 -->

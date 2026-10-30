@@ -2,7 +2,7 @@ import { LANG_DATA, TEXT_ONLY_LANGS } from './config.js';
 import { DEFAULT_AUDIO_ROUTING, normalizeAudioRouting, validateAudioRoutingPatch } from './audio-routing-config.js';
 import { resolveAudioDevice, resolveDDTransVirtualPair, resolveOutgoingMicrophone } from './audio-mix-bus.js';
 
-const activePhases = new Set(['starting', 'running', 'pausing', 'paused', 'stopping']);
+const activePhases = new Set(['starting', 'running', 'reconnecting', 'pausing', 'paused', 'stopping']);
 const languages = new Set(LANG_DATA.map(language => language.code));
 
 export function createMediaSession({ createCapture, createPlayer, createSocket, createMixBus = null, publish = () => {}, capabilities = {}, audioSettings = {}, saveAudioSettings = async () => {}, enumerateDevices = null, requestAudioPermission = null, loadHotwords = () => [], now = Date.now }) {
@@ -18,7 +18,7 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
     let config = { mode: 'listening', meetingName: '', targetLanguage: 'zh', useSystemAudio: true, useMicAudio: false, deviceId: 'default', audioEnabled: true, hotwords: [] };
     let mediaCapabilities = { systemAudio: false, isolatedTts: false, ...capabilities };
     const segments = new Map(), waiters = new Set();
-    const elapsed = () => accumulatedMs + (phase === 'running' ? now() - activeStart : 0);
+    const elapsed = () => accumulatedMs + (['running', 'reconnecting'].includes(phase) ? now() - activeStart : 0);
     const sortedSegments = () => [...segments.values()].sort((a, b) => a.sequence_order - b.sequence_order);
     function currentRouting(next = audioRouting) {
         return { ...next, originalGain: config.mode === 'outgoing' && activePhases.has(phase) ? next.outgoingOriginalGain : next.originalGain };
@@ -95,11 +95,11 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
     }
     function setPhase(next) {
         if (phase === next) return;
-        if (phase === 'running') accumulatedMs += now() - activeStart;
-        if (next === 'running') activeStart = now();
+        if (['running', 'reconnecting'].includes(phase)) accumulatedMs += now() - activeStart;
+        if (['running', 'reconnecting'].includes(next)) activeStart = now();
         phase = next;
-        if (phase === 'running' && !clock) clock = setInterval(() => publish({ type: 'clock', elapsedMs: elapsed() }), 500);
-        if (phase !== 'running') { clearInterval(clock); clock = null; publish({ type: 'clock', elapsedMs: elapsed() }); }
+        if (['running', 'reconnecting'].includes(phase) && !clock) clock = setInterval(() => publish({ type: 'clock', elapsedMs: elapsed() }), 500);
+        if (!['running', 'reconnecting'].includes(phase)) { clearInterval(clock); clock = null; publish({ type: 'clock', elapsedMs: elapsed() }); }
         broadcast();
     }
     function waitFor(check, timeoutMs = 40000) {
@@ -161,7 +161,7 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
         const current = await createCapture({
             useSystemAudio: config.useSystemAudio, useMicAudio: config.useMicAudio, deviceId: config.deviceId, initiallyPaused: true,
             onFrame({ pcm }) {
-                if (phase !== 'running' || socket?.readyState !== 1) return;
+                if (!['running', 'reconnecting'].includes(phase) || socket?.readyState !== 1) return;
                 if (socket.bufferedAmount > 64000) {
                     capture?.pause();
                     inform('音频发送积压超过2秒，正在结束并保存。', 'error');
@@ -190,7 +190,10 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
     }
     function handleMessage(message) {
         if (message.type === 'ready') sessionId = message.session_id;
-        if (message.type === 'state') setPhase(message.state);
+        if (message.type === 'state') {
+            setPhase(message.state);
+            if (message.state === 'reconnecting') void releasePlayer();
+        }
         if (message.type === 'segment') {
             const previous = segments.get(message.segment.segment_key);
             const segment = { ...previous, ...message.segment };
@@ -211,11 +214,12 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
             }).catch(error => { inform('译音播放失败：' + error.message, 'error'); void releasePlayer(); }).finally(() => { pendingAudioBytes -= bytes.byteLength; });
         }
         if (message.type === 'stopped') {
-            void releaseMedia().catch(error => inform(error.message, 'error')); setPhase('stopped');
-            inform(message.status === 'completed' ? '本次同传已完整保存。' : '已保存收到的内容，部分结果未完整返回；请查看记录。', message.status === 'completed' ? 'success' : 'warning');
+            void releaseMedia().catch(error => inform(error.message, 'error')); setPhase(message.status === 'failed' ? 'failed' : 'stopped');
+            inform(message.error || (message.status === 'completed' ? '本次同传已完整保存。' : '已保存收到的内容，部分结果未完整返回；请查看记录。'), message.error ? 'error' : message.status === 'completed' ? 'success' : 'warning');
         }
         if (message.type === 'error' || message.type === 'warning') inform(message.message, message.type);
         notify(message);
+        if (message.type === 'stopped') { const old = socket; socket = null; old?.close(); }
     }
     function normalizeOptions(options) {
         const next = { ...config, ...options };
@@ -254,7 +258,7 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
                 ...options, mode, targetLanguage: options.targetLanguage ?? audioRouting.outgoingTargetLanguage,
                 useSystemAudio: false, useMicAudio: true, deviceId: source.microphone.deviceId, audioEnabled: true,
                 meetingName: options.meetingName || '发言翻译 ' + new Date().toLocaleString('zh-CN'),
-                hotwords: options.hotwords || loadHotwords(),
+                hotwords: options.hotwords || await loadHotwords(),
             });
             await applyAudioRouting({
                 outgoingOriginalGain: 0, translatedGain: audioRouting.translatedGain || DEFAULT_AUDIO_ROUTING.translatedGain,
@@ -309,7 +313,7 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
     async function pause() {
         if (phase !== 'running') return;
         setPhase('pausing'); await releaseMedia();
-        const paused = waitFor(message => message.type === 'state' && message.state === 'paused', 10000);
+        const paused = waitFor(message => message.type === 'state' && message.state === 'paused', 25000);
         send({ type: 'pause' }); await paused;
         inform('已关闭收音，尾段仍会补齐并保存。');
     }
@@ -361,7 +365,7 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
         broadcast();
     }
     async function persistNote() {
-        if (!noteDirty || !sessionId || !['running', 'paused', 'stopping'].includes(phase)) return;
+        if (!noteDirty || !sessionId || !['running', 'reconnecting', 'paused', 'stopping'].includes(phase)) return;
         const saved = waitFor(message => message.type === 'note_saved', 10000);
         send({ type: 'note', content: note }); await saved; noteDirty = false;
     }
@@ -411,7 +415,7 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
             if (payload.defer) noteTimer = setTimeout(() => void execute('save-note').catch(error => inform(error.message, 'error')), 500);
             else await persistNote();
         } else if (name === 'prepare-overlay') {
-            if (!activePhases.has(phase)) await start({ ...payload, meetingName: payload.meetingName || '悬浮同传 ' + new Date().toLocaleString('zh-CN'), useSystemAudio: true, useMicAudio: false, audioEnabled: true, hotwords: loadHotwords() });
+            if (!activePhases.has(phase)) await start({ ...payload, meetingName: payload.meetingName || '悬浮同传 ' + new Date().toLocaleString('zh-CN'), useSystemAudio: true, useMicAudio: false, audioEnabled: true, hotwords: await loadHotwords() });
         } else if (name !== 'snapshot') throw new Error('不支持的媒体操作');
         return snapshot(['snapshot', 'start', 'stop', 'prepare-overlay', 'set-target'].includes(name));
     }
