@@ -41,11 +41,11 @@
                 <div class="card-heading">
                     <div>
                         <h2 id="outgoingHeading">发言翻译</h2>
-                        <p class="device-name">DDTrans Virtual Microphone</p>
+                        <p class="device-name" id="outgoingVirtualMicrophone">虚拟麦克风正在读取</p>
                     </div>
                     <span class="status-pill" id="outgoingStatus">正在读取</span>
                 </div>
-                <p class="card-help">自动识别你说的语言，将译音发送给对方。开始时原声静音；需要加入原声时可在下方调节。请在会议或游戏的麦克风列表中选择 DDTrans Virtual Microphone。</p>
+                <p class="card-help">自动识别你说的语言，将译音发送给对方。开始时原声静音；需要加入原声时可在下方调节。DDTrans 安装程序包含虚拟音频设备，需要时重启后刷新。</p>
                 <div class="form-grid two-columns">
                     <div class="field">
                         <label for="outgoingTargetLanguage">默认发送语言</label>
@@ -148,7 +148,9 @@
                     </div>
                     <span class="status-pill" id="virtualStatus">未启用</span>
                 </div>
-                <p class="card-help">选择已安装的虚拟音频线缆，把混音送入其他应用。外部应用需要选择与输出配对的麦克风；未安装虚拟设备时，可先用普通播放设备试播。</p>
+                <p class="card-help">选择虚拟音频线缆，把混音送入其他应用。外部应用需要选择与输出配对的麦克风；普通播放设备可以用于试播。</p>
+                <p class="device-name">外部软件选择：<span id="virtualCaptureName">未选择</span></p>
+                <p class="card-help">音频设备由 VB-CABLE（VB-Audio）提供，Donationware；欢迎捐赠支持。官方来源：vb-audio.com</p>
                 <div class="status-panel" id="virtualStatusPanel">
                     <span class="status-icon" aria-hidden="true">●</span>
                     <div>
@@ -167,7 +169,7 @@
                     <div class="field">
                         <label for="virtualRenderDevice">DDTrans 输出到</label>
                         <select id="virtualRenderDevice"></select>
-                        <small>例如 CABLE Input。没有虚拟设备时，普通扬声器仅用于试播。</small>
+                        <small>例如 CABLE Input；普通播放设备可用于试播。</small>
                     </div>
                     <div class="field">
                         <label for="targetLanguage">当前同传语言</label>

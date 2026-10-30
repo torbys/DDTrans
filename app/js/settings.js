@@ -57,7 +57,7 @@ function renderControls() {
     byId('monitorMode').disabled = !value.monitorEnabled;
 }
 function renderOutgoing() {
-    const pair = resolveDDTransVirtualPair(devices);
+    const pair = resolveDDTransVirtualPair(devices, values());
     const ownSession = outgoingActive();
     const source = resolveOutgoingMicrophone(devices, ownSession ? snapshot.config.deviceId : 'default');
     let state = 'idle', label = '正在读取', detail = '正在检查 DDTrans 音频设备。';
@@ -72,9 +72,9 @@ function renderOutgoing() {
             state = snapshot.phase === 'running' && ready ? 'outputting' : 'warning';
             label = snapshot.phase === 'paused' ? '已暂停' : busy() ? '正在处理' : ready ? '正在发送' : '输出未就绪';
             const language = LANG_DATA.find(item => item.code === snapshot.config.targetLanguage)?.name || snapshot.config.targetLanguage;
-            detail = snapshot.phase === 'paused' ? '发言翻译已暂停。设备恢复后可继续，也可以停止并保存。' : `本次发送语言：${language}。请在会议或游戏中选择 DDTrans Virtual Microphone。`;
+            detail = snapshot.phase === 'paused' ? '发言翻译已暂停。设备恢复后可继续，也可以停止并保存。' : `本次发送语言：${language}。请在会议或游戏中选择“${pair.capture.label}”。`;
             if (snapshot.audioRouting?.virtualError) detail = snapshot.audioRouting.virtualError;
-        } else { state = 'ready'; label = '设备就绪'; detail = '两个 DDTrans 音频端点已找到，开始时会自动配对。'; }
+        } else { state = 'ready'; label = '设备就绪'; detail = `已找到配对端点；外部软件请选择“${pair.capture.label}”。`; }
     }
     byId('outgoingStatus').textContent = label;
     byId('outgoingStatus').dataset.state = state;
@@ -82,6 +82,7 @@ function renderOutgoing() {
     status('outgoingStatusDetail', detail, state === 'error');
     byId('outgoingMicrophone').textContent = source.available ? source.microphone.label : '没有可用的真实麦克风';
     byId('outgoingMicrophone').dataset.deviceId = source.available ? source.microphone.deviceId : '';
+    byId('outgoingVirtualMicrophone').textContent = pair.available ? pair.capture.label : '虚拟麦克风未就绪';
     const start = byId('startOutgoingBtn');
     start.textContent = ownSession && snapshot.phase === 'paused' ? '继续发言翻译' : ownSession ? '发言翻译中' : '开始发言翻译';
     start.disabled = outgoingPending || busy() || !devicesLoaded || !pair.available || !source.available || (sessionActive() && (!ownSession || snapshot.phase !== 'paused'));
@@ -95,9 +96,9 @@ function virtualStatus() {
     if (!devicesLoaded) return ['idle', '正在读取', '正在读取音频设备', '稍后可以选择输出和配对的麦克风。'];
     if (value.virtualRenderDeviceId && !render) return ['error', '设备已断开', '上次选择的输出设备不可用', '重新连接设备，或在下方选择新的输出。'];
     if (runtime.virtualError) return ['error', '输出不可用', '暂时无法打开输出设备', runtime.virtualError];
-    if (!devices.virtualOutputs.length && !render) return ['warning', '未检测到虚拟设备', '未找到可识别的虚拟音频设备', '安装并启用虚拟音频线缆后，点击“刷新设备”。已有其他品牌设备也可以手动选择并检测连接。'];
+    if (!devices.virtualOutputs.length && !render) return ['warning', '未检测到虚拟设备', '未找到可识别的虚拟音频设备', 'DDTrans 安装程序包含虚拟音频设备，需要时重启后刷新。也可以手动选择已有虚拟设备并检测连接。'];
     if (!render) return ['warning', '请选择输出', '先选择声音发送到哪里', '虚拟线缆通常使用 Input 作为播放端；下方“外部软件选择”通常是对应的 Output。'];
-    if (!render.likelyVirtual) return ['warning', '普通输出试播', '已选播放设备：' + (render.label || '未命名设备'), '目前只确认了播放设备。这不会创建新的系统麦克风；可以先试播，再选择虚拟设备。'];
+    if (!render.likelyVirtual) return ['warning', '普通输出试播', '已选播放设备：' + (render.label || '未命名设备'), '普通播放设备可用于试播，但不会创建系统麦克风。'];
     if (value.virtualCaptureDeviceId && !input) return ['warning', '输入已断开', '配对的虚拟麦克风不可用', '请重新选择外部软件需要使用的输入设备。'];
     if (!value.virtualOutputEnabled) return ['idle', '未启用', '设备已选好，发送开关尚未开启', '开启“虚拟输出”后，同传声音会按下方音量发送。'];
     if (runtime.status === 'blocked') return ['error', '输出已暂停', '需要检查采集设置', runtime.error];
@@ -113,6 +114,8 @@ function renderStatus() {
     byId('virtualStatusPanel').dataset.state = state;
     byId('virtualStatusTitle').textContent = title; byId('virtualStatusDetail').textContent = detail;
     const runtime = snapshot.audioRouting || {}, value = values();
+    const input = devices.inputs.find(device => device.deviceId === value.virtualCaptureDeviceId);
+    byId('virtualCaptureName').textContent = input?.label || '未选择';
     const labels = { idle: '待命', waiting: '等待同传', 'needs-device': '等待选择设备', monitoring: '监听中', outputting: '正在发送', error: '输出不可用', blocked: '输出已暂停' };
     byId('diagnosticStatus').textContent = labels[runtime.status] || '待命';
     byId('diagnosticSampleRate').textContent = `${(runtime.sampleRate || 48000) / 1000} kHz · 单声道`;
@@ -169,7 +172,8 @@ async function runOutgoing(stop = false) {
         await flush();
         const result = await api.mediaCommand(stop ? 'stop' : resume ? 'resume' : 'start', { mode: 'outgoing', ...(stop || resume ? { sessionId } : {}) });
         applySnapshot(result);
-        status('outgoingActionStatus', stop ? '发言翻译已停止，内容已保存。' : '已开始发言翻译，请在对方应用中选择 DDTrans Virtual Microphone。');
+        const pair = resolveDDTransVirtualPair(devices, result.audioRouting || values());
+        status('outgoingActionStatus', stop ? '发言翻译已停止，内容已保存。' : `已开始发言翻译，请在对方应用中选择“${pair.capture?.label || '配对的虚拟麦克风'}”。`);
     } catch (error) { status('outgoingActionStatus', error.message, true); }
     finally { outgoingPending = false; renderOutgoing(); }
 }

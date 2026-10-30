@@ -45,3 +45,85 @@ test('device identity retains the exact selection, rebinds one known label, and 
     assert.equal(resolveAudioDevice(devices, 'old', 'Gone').missing, true);
     assert.equal(classifyAudioDevices(devices).virtualOutputs.length, 1);
 });
+
+test('virtual pair resolver recognizes DDTrans and VB-CABLE aliases', async () => {
+    const { resolveDDTransVirtualPair } = await import('../app/js/audio-mix-bus.js');
+    for (const [renderLabel, captureLabel] of [
+        ['DDTrans Virtual Input', 'DDTrans Virtual Microphone'],
+        ['DDTrans Virtual Input (DDTrans Virtual Audio)', 'DDTrans Virtual Microphone (DDTrans Virtual Audio)'],
+        ['DDTrans Virtual Input (VB-Audio Virtual Cable)', 'DDTrans Virtual Microphone (VB-Audio Virtual Cable)'],
+        ['cable input (vb-audio virtual cable)', 'CABLE OUTPUT (VB-AUDIO VIRTUAL CABLE)'],
+        ['CABLE Input (VB-Audio Virtual Cable)', 'DDTrans Virtual Microphone (VB-Audio Virtual Cable)'],
+        ['DDTrans Virtual Input (VB-Audio Virtual Cable)', 'CABLE Output (VB-Audio Virtual Cable)'],
+    ]) {
+        const pair = resolveDDTransVirtualPair({
+            outputs: [{ deviceId: 'render', kind: 'audiooutput', label: renderLabel }],
+            inputs: [{ deviceId: 'capture', kind: 'audioinput', label: captureLabel }],
+        });
+        assert.equal(pair.available, true, renderLabel);
+        assert.equal(pair.render.deviceId, 'render');
+        assert.equal(pair.capture.deviceId, 'capture');
+    }
+});
+
+test('virtual pair resolver does not mix custom-driver and VB-CABLE endpoints', async () => {
+    const { resolveDDTransVirtualPair } = await import('../app/js/audio-mix-bus.js');
+    const pair = resolveDDTransVirtualPair({
+        outputs: [{ deviceId: 'custom-render', kind: 'audiooutput', label: 'DDTrans Virtual Input (DDTrans Virtual Audio)' }],
+        inputs: [{ deviceId: 'vb-capture', kind: 'audioinput', label: 'DDTrans Virtual Microphone (VB-Audio Virtual Cable)' }],
+    });
+    assert.equal(pair.status, 'missing');
+});
+
+test('virtual pair resolver fails closed for missing, 16-channel, and ambiguous devices', async () => {
+    const { resolveDDTransVirtualPair } = await import('../app/js/audio-mix-bus.js');
+    const capture = { deviceId: 'capture', kind: 'audioinput', label: 'CABLE Output (VB-Audio Virtual Cable)' };
+    assert.equal(resolveDDTransVirtualPair({ outputs: [], inputs: [capture] }).status, 'missing');
+    assert.equal(resolveDDTransVirtualPair({
+        outputs: [{ deviceId: '16ch', kind: 'audiooutput', label: 'CABLE Input 16 Ch (VB-Audio Virtual Cable)' }],
+        inputs: [capture],
+    }).status, 'missing');
+    assert.equal(resolveDDTransVirtualPair({
+        outputs: [
+            { deviceId: 'dd-render', kind: 'audiooutput', label: 'DDTrans Virtual Input' },
+            { deviceId: 'cable-render', kind: 'audiooutput', label: 'CABLE Input (VB-Audio Virtual Cable)' },
+        ],
+        inputs: [
+            { deviceId: 'dd-capture', kind: 'audioinput', label: 'DDTrans Virtual Microphone' },
+            capture,
+        ],
+    }).status, 'ambiguous');
+});
+
+test('virtual pair resolver uses an exact persisted pair only when it is known', async () => {
+    const { resolveDDTransVirtualPair } = await import('../app/js/audio-mix-bus.js');
+    const devices = {
+        outputs: [
+            { deviceId: 'dd-render', kind: 'audiooutput', label: 'DDTrans Virtual Input' },
+            { deviceId: 'cable-render', kind: 'audiooutput', label: 'CABLE Input (VB-Audio Virtual Cable)' },
+        ],
+        inputs: [
+            { deviceId: 'dd-capture', kind: 'audioinput', label: 'DDTrans Virtual Microphone' },
+            { deviceId: 'cable-capture', kind: 'audioinput', label: 'CABLE Output (VB-Audio Virtual Cable)' },
+        ],
+    };
+    const selected = resolveDDTransVirtualPair(devices, { virtualRenderDeviceId: 'cable-render', virtualCaptureDeviceId: 'cable-capture' });
+    assert.equal(selected.available, true);
+    assert.equal(selected.render.deviceId, 'cable-render');
+    assert.equal(selected.capture.deviceId, 'cable-capture');
+    assert.equal(resolveDDTransVirtualPair(devices, { virtualRenderDeviceId: 'cable-render', virtualCaptureDeviceId: 'dd-capture' }).status, 'ambiguous');
+});
+
+
+test('VB-CABLE pairs localized and customized endpoint labels without choosing the 16-channel input', async () => {
+    const { classifyAudioDevices, resolveDDTransVirtualPair } = await import('../app/js/audio-mix-bus.js');
+    const devices = classifyAudioDevices([
+        { kind: 'audiooutput', deviceId: 'render-localized', label: '扬声器 (VB-Audio Virtual Cable)' },
+        { kind: 'audiooutput', deviceId: 'render-16', label: 'CABLE In 16 Ch (VB-Audio Virtual Cable)' },
+        { kind: 'audioinput', deviceId: 'capture-custom', label: '会议译音 (VB-Audio Virtual Cable)' },
+    ]);
+    const pair = resolveDDTransVirtualPair(devices);
+    assert.equal(pair.available, true);
+    assert.equal(pair.render.deviceId, 'render-localized');
+    assert.equal(pair.capture.deviceId, 'capture-custom');
+});

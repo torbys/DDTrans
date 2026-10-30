@@ -18,17 +18,23 @@ export function classifyAudioDevices(devices = []) {
     return { inputs, outputs, virtualInputs: inputs.filter(device => device.likelyVirtual), virtualOutputs: outputs.filter(device => device.likelyVirtual) };
 }
 
-export function resolveDDTransVirtualPair({ inputs = [], outputs = [] } = {}) {
-    const named = (devices, label, kind) => devices.filter(device => {
-        const name = (device.label || '').trim().toLowerCase();
-        return isConcreteDevice(device) && (!device.kind || device.kind === kind)
-            && (name === label.toLowerCase() || name === (label + ' (DDTrans Virtual Audio)').toLowerCase());
-    });
-    const renders = named(outputs, 'DDTrans Virtual Input', 'audiooutput');
-    const captures = named(inputs, 'DDTrans Virtual Microphone', 'audioinput');
-    if (renders.length > 1 || captures.length > 1) return { available: false, status: 'ambiguous', message: '检测到多个同名 DDTrans 音频设备，请在 Windows 音频设置中停用重复设备后刷新。' };
-    if (renders.length !== 1 || captures.length !== 1) return { available: false, status: 'missing', message: 'DDTrans 虚拟麦克风不可用。需要同时检测到 DDTrans Virtual Input 和 DDTrans Virtual Microphone；安装并启用驱动后请刷新设备。' };
-    return { available: true, status: 'available', render: renders[0], capture: captures[0] };
+export function resolveDDTransVirtualPair({ inputs = [], outputs = [] } = {}, routing = {}) {
+    const nameOf = device => (device.label || '').trim().toLowerCase();
+    const named = (devices, pattern, kind) => devices.filter(device => isConcreteDevice(device) && (!device.kind || device.kind === kind) && pattern.test(nameOf(device)));
+    const excludedCable = /^cable (?:in(?:put)? 16 ch|[abcd] (?:input|output))\b/i;
+    const customRenders = named(outputs, /^ddtrans virtual input(?: \(ddtrans virtual audio\))?$/i, 'audiooutput');
+    const customCaptures = named(inputs, /^ddtrans virtual microphone(?: \(ddtrans virtual audio\))?$/i, 'audioinput');
+    const vbRenders = named(outputs, /^.+ \(vb-audio virtual cable\)$/i, 'audiooutput').filter(device => !excludedCable.test(device.label || ''));
+    const vbCaptures = named(inputs, /^.+ \(vb-audio virtual cable\)$/i, 'audioinput').filter(device => !excludedCable.test(device.label || ''));
+    const pairs = [
+        ...customRenders.flatMap(render => customCaptures.map(capture => ({ provider: 'ddtrans', render, capture }))),
+        ...vbRenders.flatMap(render => vbCaptures.map(capture => ({ provider: 'vb-cable', render, capture }))),
+    ];
+    const persisted = pairs.filter(pair => pair.render.deviceId === routing.virtualRenderDeviceId && pair.capture.deviceId === routing.virtualCaptureDeviceId);
+    if (persisted.length === 1) return { available: true, status: 'available', ...persisted[0], pairs };
+    if (pairs.length === 1) return { available: true, status: 'available', ...pairs[0], pairs };
+    if (pairs.length > 1) return { available: false, status: 'ambiguous', pairs, message: '检测到多个可用 DDTrans 虚拟音频设备配对，请在设置中明确选择一对后刷新。' };
+    return { available: false, status: 'missing', pairs, message: '未找到完整的虚拟音频设备配对。DDTrans 安装程序包含虚拟音频设备，需要时重启后刷新。' };
 }
 
 export function resolveOutgoingMicrophone({ inputs = [] } = {}, deviceId = 'default') {
@@ -179,6 +185,10 @@ export function createAudioMixBus({ routing = {}, onState = () => {}, onError = 
         if (!outputId) throw new Error('请先选择输出设备');
         const render = devices.outputs.find(device => device.deviceId === outputId);
         const input = devices.inputs.find(device => device.deviceId === config.virtualCaptureDeviceId);
+        if (target === 'virtual' && verifyCapture) {
+            const pair = resolveDDTransVirtualPair(devices, config);
+            if (!pair.available || pair.render.deviceId !== outputId || pair.capture.deviceId !== config.virtualCaptureDeviceId) throw new Error(pair.message);
+        }
         if (verifyCapture && (!input || !render)) throw new Error('请先选择输出及配对输入，再检测连接');
         let testContext, stream, analyser, source, oscillator, gain;
         try {
