@@ -19,6 +19,13 @@ function createTranslationSession({ options, config, store, emit, gatewayFactory
   let failure;
   let noteId;
   let inputBytes = 0;
+  let epoch = 0;
+  let connectionOffset = 0;
+  let reconnectAttempts = 0;
+  let cancelRetry = () => {};
+  let hadInterruption = false;
+  const connections = [];
+  const gaps = [];
   const usage = new Map();
   const warnings = [];
   const emitState = () => emit({ type: 'state', state, session_id: record.id });
@@ -46,29 +53,113 @@ function createTranslationSession({ options, config, store, emit, gatewayFactory
     },
     onWarning(message) { warnings.push(message); emit({ type: 'warning', message }); },
   });
-  const gateway = gatewayFactory({ endpoint: config.endpoint, apiKey: config.apiKey, transport: options.transport || 'websocket', onEvent: event => assembler.accept(event), onFailure: error => { failure ||= error; emit({ type: 'error', message: error.message, code: error.code }); if (state !== 'starting') void stop({ interrupted: true }); } });
+  function reportFailure(error) {
+    failure ||= error;
+    error.reported = true;
+    emit({ type: 'error', message: error.message, code: error.code });
+  }
+  function onFailure(error) {
+    if (['stopping', 'stopped', 'reconnecting'].includes(state)) return;
+    if (state !== 'starting' && error.retryable && reconnectAttempts < 2) {
+      void recover(error);
+      return;
+    }
+    reportFailure(error);
+    if (state !== 'starting') void stop({ interrupted: true });
+  }
+  function makeGateway() {
+    const currentEpoch = epoch;
+    const prefix = id => id == null ? id : 'reconnect-' + currentEpoch + ':' + id;
+    return gatewayFactory({
+      endpoint: config.endpoint, apiKey: config.apiKey, transport: options.transport || 'websocket',
+      connectTimeoutMs: currentEpoch ? 8000 : 20000,
+      onFailure: error => { if (currentEpoch === epoch) onFailure(error); },
+      onEvent(event) {
+        if (currentEpoch !== epoch) return;
+        if (!currentEpoch) { assembler.accept(event); return; }
+        const next = { ...event };
+        for (const key of ['event_id', 'item_id', 'previous_item_id', 'response_id']) if (next[key] != null) next[key] = prefix(next[key]);
+        if (next.speaker_id != null) next.speaker_id = (currentEpoch + 1) + '-' + next.speaker_id;
+        for (const key of ['audio_start_ms', 'audio_end_ms']) if (next[key] != null) next[key] += connectionOffset;
+        if (next.item) next.item = { ...next.item, id: prefix(next.item.id) };
+        if (next.response) next.response = { ...next.response, id: prefix(next.response.id), output: next.response.output?.map(item => ({ ...item, id: prefix(item.id) })) };
+        assembler.accept(next);
+      },
+    });
+  }
+  let gateway = makeGateway();
+  const metrics = () => ({ ...gateway.metrics, reconnect_attempts: reconnectAttempts, connections, gaps });
+  function acceptedConnection(accepted) {
+    connectionOffset = Math.round(inputBytes / 32);
+    connections.push({ epoch, offset_ms: Math.round(inputBytes / 32), metrics: { ...gateway.metrics } });
+    store.updateSessionTelemetry(record.id, { accepted_config: accepted, metrics: metrics() });
+  }
+  async function recover(error) {
+    const resumeState = ['paused', 'pausing'].includes(state) ? 'paused' : 'running';
+    hadInterruption = true;
+    gateway.close();
+    assembler.finalize();
+    const gap = { start_ms: Math.round(inputBytes / 32), reason: error.code || 'network_error' };
+    gaps.push(gap);
+    state = 'reconnecting';
+    emitState();
+    let lastError = error;
+    while (reconnectAttempts < 2 && state === 'reconnecting') {
+      reconnectAttempts++;
+      emit({ type: 'warning', message: '网络连接中断，正在重连（' + reconnectAttempts + '/2）。本地录音继续保存，这段声音不会补发。' });
+      await new Promise(resolve => {
+        const timer = setTimeout(resolve, reconnectAttempts === 1 ? 500 : 1500);
+        cancelRetry = () => { clearTimeout(timer); resolve(); };
+      });
+      if (state !== 'reconnecting') break;
+      epoch++;
+      gateway = makeGateway();
+      try {
+        const accepted = await gateway.connect(request);
+        if (state !== 'reconnecting') { gateway.close(); break; }
+        gap.end_ms = Math.round(inputBytes / 32);
+        acceptedConnection(accepted);
+        state = resumeState;
+        emitState();
+        emit({ type: 'warning', message: '连接已恢复。中断前的字幕和录音已保存；说话人编号从本次连接重新识别。' });
+        return;
+      } catch (nextError) {
+        lastError = nextError;
+        gateway.close();
+        if (!nextError.retryable) break;
+      }
+    }
+    gap.end_ms = Math.round(inputBytes / 32);
+    if (state === 'reconnecting') {
+      reportFailure(lastError);
+      await stop({ interrupted: true });
+    }
+  }
 
   async function start() {
     emitState();
     try {
       const accepted = await gateway.connect(request);
-      store.updateSessionTelemetry(record.id, { accepted_config: accepted, metrics: { ...gateway.metrics } });
+      acceptedConnection(accepted);
       state = 'running';
       emit({ type: 'ready', session_id: record.id, model: config.model, transport: 'websocket', accepted, metrics: { ...gateway.metrics } });
       emitState();
     } catch (error) {
-      if (!failure) { failure = error; emit({ type: 'error', message: error.message, code: error.code }); }
+      if (!failure) reportFailure(error);
       await stop({ interrupted: true });
       throw error;
     }
   }
   function sendAudio(data) {
-    if (state !== 'running' && state !== 'pausing') return;
+    if (!['running', 'pausing', 'reconnecting'].includes(state)) return;
     const bytes = Buffer.from(data);
     if (!bytes.length || bytes.length % 2 || bytes.length > 64000) throw new Error('输入必须为不超过2秒的16-bit PCM帧');
-    gateway.sendAudio(bytes);
     raw.append(bytes);
     inputBytes += bytes.length;
+    if (state !== 'reconnecting') {
+      try { gateway.sendAudio(bytes); }
+      catch (error) { onFailure(error); }
+    }
   }
   async function pause() {
     if (state !== 'running') throw new Error('当前会话不能暂停');
@@ -99,20 +190,24 @@ function createTranslationSession({ options, config, store, emit, gatewayFactory
   }
   function stop({ interrupted = false } = {}) {
     if (stopping) return stopping;
+    const reconnecting = state === 'reconnecting';
     state = 'stopping';
     emitState();
+    cancelRetry();
+    if (reconnecting) gateway.close();
     stopping = (async () => {
-      try { if (!failure) await gateway.finish(); } catch (error) { failure ||= error; }
+      try { if (!failure && !reconnecting) await gateway.finish(); } catch (error) { failure ||= error; }
       try {
         assembler.finalize();
         raw.close();
         for (const audio of tts.values()) audio.writer.close();
         const partial = assembler.rows().some(row => row.status !== 'final');
-        const status = failure ? (inputBytes ? 'interrupted' : 'failed') : interrupted || partial ? 'interrupted' : 'completed';
-        store.updateSessionTelemetry(record.id, { metrics: { ...gateway.metrics }, usage: [...usage.values()], event_counts: { ...assembler.counts } });
-        const saved = store.finishSession(record.id, status, failure?.message || (partial ? '部分结果未完整返回，已保留收到的内容' : null));
+        const status = failure ? (inputBytes ? 'interrupted' : 'failed') : interrupted || partial || hadInterruption ? 'interrupted' : 'completed';
+        for (const gap of gaps) gap.end_ms ??= Math.round(inputBytes / 32);
+        store.updateSessionTelemetry(record.id, { metrics: metrics(), usage: [...usage.values()], event_counts: { ...assembler.counts } });
+        const saved = store.finishSession(record.id, status, failure?.message || (hadInterruption ? '网络曾中断，间断音频仅保存在本地，未送往模型翻译' : partial ? '部分结果未完整返回，已保留收到的内容' : null));
         state = 'stopped';
-        emit({ type: 'stopped', session_id: record.id, status: saved.status, partial, metrics: { ...gateway.metrics }, event_counts: { ...assembler.counts }, warnings });
+        emit({ type: 'stopped', session_id: record.id, status: saved.status, partial, error: failure?.message, code: failure?.code, metrics: metrics(), event_counts: { ...assembler.counts }, warnings });
         emitState();
         return saved;
       } finally { gateway.close(); }

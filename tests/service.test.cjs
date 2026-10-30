@@ -15,7 +15,7 @@ const DEFAULT_ENDPOINT = 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=
 
 function makeGatewayFactory({ deferFinish = false } = {}) {
   const gateways = [], configs = [];
-  const factory = ({ onEvent, endpoint, apiKey }) => {
+  const factory = ({ onEvent, onFailure, endpoint, apiKey }) => {
     configs.push({ endpoint, apiKey });
     let resolveFinish;
     const gateway = {
@@ -36,6 +36,7 @@ function makeGatewayFactory({ deferFinish = false } = {}) {
       },
       close() {},
       emit(event) { onEvent(event); },
+      fail(error) { onFailure(error); },
     };
     gateways.push(gateway);
     return gateway;
@@ -264,7 +265,8 @@ test('persists a fully associated source/target tail and readable WAV files only
   const detail = await fetch(service.origin + `/api/sessions/${ready.session_id}`).then(response => response.json());
   assert.equal(detail.session.status, 'completed');
   assert.equal(JSON.parse(detail.session.accepted_config_json).model, MODEL);
-  assert.deepEqual(JSON.parse(detail.session.metrics_json), { connect_ms: 1 });
+  assert.equal(JSON.parse(detail.session.metrics_json).connect_ms, 1);
+  assert.equal(JSON.parse(detail.session.metrics_json).reconnect_attempts, 0);
   assert.deepEqual(JSON.parse(detail.session.usage_json), [{ response_id: 'response-1', status: 'completed', usage: {} }]);
   assert.equal(JSON.parse(detail.session.event_counts_json)['session.finished'], 1);
   assert.equal(detail.segments.length, 1);
