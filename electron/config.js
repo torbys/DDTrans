@@ -11,7 +11,13 @@ function validateEndpoint(endpoint) {
   let url;
   try { url = new URL(endpoint.trim()); }
   catch { throw new Error('QWEN_WS_URL 必须是有效的 WSS 地址'); }
+  if (url.protocol === 'https:' && ['/compatible-mode/v1', '/compatible-mode/v1/', '/api-ws/v1/realtime'].includes(url.pathname)) {
+    url.protocol = 'wss:';
+    url.pathname = '/api-ws/v1/realtime';
+    if (!url.searchParams.has('model')) url.searchParams.set('model', MODEL);
+  }
   if (url.protocol !== 'wss:' || url.searchParams.get('model') !== MODEL) throw new Error('QWEN_WS_URL 必须为 qwen3.8 的 wss 实时地址');
+  if (url.username || url.password || url.hash) throw new Error('连接地址不能包含用户名、密码或片段');
   return url.href;
 }
 
@@ -60,8 +66,8 @@ function buildSessionConfig(options = {}) {
 function transportCapabilities() {
   return [
     { id: 'websocket', available: true, label: 'WebSocket' },
-    { id: 'webrtc', available: false, label: 'WebRTC', reason: '尚未实现客户端媒体、鉴权与存储接入' },
-    { id: 'aoq', available: false, label: 'AOQ', reason: '尚未验证 Windows/Electron SDK 接入' },
+    { id: 'webrtc', available: false, label: 'WebRTC', reason: '真实探针已验证；产品录音、落库与重连尚未接入' },
+    { id: 'aoq', available: false, label: 'AOQ', reason: '官方 Electron SDK 1.4.0 已实测；尾段完整性尚未通过验收' },
   ];
 }
 module.exports = { MODEL, DEFAULT_ENDPOINT, validateEndpoint, loadConfig, buildSessionConfig, transportCapabilities };

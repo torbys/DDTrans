@@ -26,9 +26,9 @@
             </section>
             <form id="connectionForm" novalidate>
                 <div class="field">
-                    <label for="endpoint">WSS 实时地址</label>
+                    <label for="endpoint">业务空间接入地址</label>
                     <input id="endpoint" name="endpoint" type="url" autocomplete="url" spellcheck="false" required>
-                    <small>必须使用 <code>wss://</code>，并包含 <code>model=qwen3.8-livetranslate-flash-realtime</code>。</small>
+                    <small>粘贴百炼业务空间的 HTTPS Base URL 或实时 WSS 地址。地址和 Key 需要属于同一业务空间，HTTPS 地址会自动转换。</small>
                 </div>
                 <div class="field">
                     <label for="apiKey">API Key</label>
@@ -37,6 +37,7 @@
                 </div>
                 <p id="connectionStatus" class="status" role="status"></p>
                 <div class="actions">
+                    <button id="testBtn" class="button" type="button">测试连接</button>
                     <button id="saveBtn" class="button primary" type="submit">保存</button>
                 </div>
             </form>
