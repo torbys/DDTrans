@@ -1,0 +1,26 @@
+DDTrans includes VB-CABLE by VB-Audio Software (Vincent Burel).
+
+VB-CABLE is a donationware, all participations are welcome.
+Origin and support: https://www.vb-cable.com/
+Licensing and donations: https://vb-audio.com/Services/licensing.htm
+
+The original VB-CABLE package is included without modification. Its copyright,
+license, provider identity, and digital signatures remain with VB-Audio.
+DDTrans changes the Windows audio endpoint display names only for a new device
+installed by DDTrans. Existing VB-CABLE installations are reused without renaming.
+The names do not claim ownership of the VB-CABLE driver.
+
+The published VB-CABLE distribution terms permit embedding the base VB-CABLE
+package in a free or commercial application installer when the end user can
+identify VB-CABLE and participate in its donationware licensing model.
+Professional/company/institution distribution where this model is not applicable
+requires the corresponding VB-Audio licenses. VB-CABLE A+B and C+D are not included.
+
+Installing the virtual audio device requires Windows administrator approval.
+A normal Windows restart may be necessary. The installer does not change
+Secure Boot, memory integrity, boot configuration, or certificate trust stores.
+
+DDTrans 协同安装 VB-Audio Software 提供的 VB-CABLE 虚拟音频设备。
+VB-CABLE 是 Donationware，欢迎捐赠支持： https://www.vb-cable.com/
+原厂驱动及签名保持完整；DDTrans 只为本次新安装的设备设置显示名称。
+已有 VB-CABLE 将直接复用，不会自动更名。企业、机构分发须遵守原厂许可。
