@@ -1,0 +1,37 @@
+appId: com.ddtrans.app
+productName: DDTrans
+artifactName: DDTrans-Setup-${version}-x64.${ext}
+directories:
+  buildResources: installer
+  output: release
+asar: true
+files:
+  - app/**/*
+  - electron/**/*
+  - package.json
+  - node_modules/ws/**/*
+  - '!**/.env'
+  - '!**/.env.*'
+  - '!data{,/**/*}'
+  - '!native{,/**/*}'
+  - '!logs{,/**/*}'
+  - '!scripts{,/**/*}'
+  - '!tests{,/**/*}'
+extraResources:
+  - from: data/virtual-audio/build
+    to: virtual-audio
+    filter:
+      - '**/*'
+      - '!**/*.obj'
+      - '!vendor-pins.h'
+nsis:
+  oneClick: false
+  perMachine: true
+  allowElevation: true
+  allowToChangeInstallationDirectory: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: DDTrans
+  runAfterFinish: false
+  include: installer/windows-installer.nsh
+  license: data/virtual-audio/build/THIRD-PARTY-NOTICES.txt

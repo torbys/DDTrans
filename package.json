@@ -1,6 +1,6 @@
 {
   "name": "ai-simultaneous-translation",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "description": "Qwen 3.8 实时同传 · 说话人字幕与本地记录",
   "main": "electron/main.js",
   "scripts": {
@@ -15,16 +15,17 @@
     "verify:live": "electron scripts/verify-electron.cjs",
     "verify:audio-routing": "electron scripts/verify-audio-routing.cjs",
     "verify:desktop": "electron scripts/verify-desktop.cjs",
-    "driver:restore": "pwsh -NoProfile -File native/virtual-microphone/restore-toolchain.ps1",
-    "driver:build": "pwsh -NoProfile -File native/virtual-microphone/build.ps1",
-    "driver:test": "pwsh -NoProfile -File native/virtual-microphone/build.ps1 -TestOnly",
-    "driver:check": "pwsh -NoProfile -File native/virtual-microphone/install.ps1",
-    "driver:sign-dev": "pwsh -NoProfile -File native/virtual-microphone/sign-development.ps1",
-    "driver:probe": "data\\driver-development\\build\\ddtrans-probe.exe",
-    "driver:package": "pwsh -NoProfile -File native/virtual-microphone/package-development.ps1"
+    "audio:prepare": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-virtual-audio.ps1",
+    "audio:check": "data\\virtual-audio\\build\\ddtrans-audio-device.exe status",
+    "audio:probe": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/probe-virtual-audio.ps1",
+    "dist:win": "node scripts/package-windows.cjs",
+    "pack:win": "node scripts/package-windows.cjs --dir",
+    "verify:package": "node scripts/verify-windows-package.cjs",
+    "verify:packaged-app": "node scripts/verify-packaged-app.cjs"
   },
   "devDependencies": {
-    "electron": "45.1.0"
+    "electron": "45.1.0",
+    "electron-builder": "26.18.0"
   },
   "dependencies": {
     "ws": "8.22.0"

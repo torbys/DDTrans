@@ -1,0 +1,18 @@
+{
+  "name": "VB-CABLE",
+  "version": "Pack45",
+  "url": "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack45.zip",
+  "sha256": "B950E39F01AF1D04EA623C8F6D8EB9B6EA5C477C637295FABF20631C85116BFB",
+  "licenseUrl": "https://vb-audio.com/Services/licensing.htm",
+  "manualUrl": "https://vb-audio.com/Cable/VBCABLE_ReferenceManual.pdf",
+  "hardwareId": "VBAudioVACWDM",
+  "files": {
+    "vbMmeCable64_win10.inf": "61C857BE74831CC299D9BE62F8D49D137F14063454FC54F859D5BC9B4B813DAF",
+    "vbaudio_cable64_win10.cat": "0A921EBADBE39CF3FA7C14FF37D1CA22565A9651244BD3AC177DC810BC99072E",
+    "vbaudio_cable64_win10.sys": "F01344602472F1B527DE5EE98F18987C03DB48FEA444E457D061E937F1D531D5"
+  },
+  "connectors": {
+    "render": "vbaudiovacwdm2022_out1_topo_e51a78a01fb100001/00010001",
+    "capture": "vbaudiovacwdm2022_in1_topo_e51a78a01fb200001/00010000"
+  }
+}

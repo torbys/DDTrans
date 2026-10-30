@@ -41,7 +41,7 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
         deviceReport = await enumerateDevices();
         const patch = {};
         const outgoing = config.mode === 'outgoing' && activePhases.has(phase);
-        const pair = outgoing ? resolveDDTransVirtualPair(deviceReport) : null;
+        const pair = outgoing ? resolveDDTransVirtualPair(deviceReport, audioRouting) : null;
         if (outgoing && !pair.available) await mixBus?.setPlaybackAllowed(false, pair.message);
         for (const [idKey, labelKey, devices] of [
             ['monitorDeviceId', 'monitorDeviceLabel', deviceReport.outputs],
@@ -79,8 +79,9 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
             delete validated.originalGain;
         }
         const next = normalizeAudioRouting({ ...audioRouting, ...validated });
-        if (config.mode === 'outgoing' && activePhases.has(phase) && Object.keys(validated).some(key => key.startsWith('virtual'))) {
-            const pair = resolveDDTransVirtualPair(deviceReport);
+        const changesVirtualRoute = Object.keys(validated).some(key => key.startsWith('virtual'));
+        if (config.mode === 'outgoing' && activePhases.has(phase) && changesVirtualRoute) {
+            const pair = resolveDDTransVirtualPair(deviceReport, next);
             if (!pair.available || !next.virtualOutputEnabled || next.virtualRenderDeviceId !== pair.render.deviceId || next.virtualCaptureDeviceId !== pair.capture.deviceId) throw new Error('发言翻译固定使用 DDTrans 虚拟麦克风。请先停止发言翻译，再更改输出设备。');
         }
         checkInputLoop(inputConfig, next);
@@ -152,7 +153,7 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
         if (config.mode === 'outgoing') {
             const source = resolveOutgoingMicrophone(deviceReport, config.deviceId);
             if (!source.available) throw new Error(source.message);
-            const pair = resolveDDTransVirtualPair(deviceReport);
+            const pair = resolveDDTransVirtualPair(deviceReport, audioRouting);
             if (!pair.available) throw new Error(pair.message);
             if (audioRouting.virtualRenderDeviceId !== pair.render.deviceId || audioRouting.virtualCaptureDeviceId !== pair.capture.deviceId || !audioRouting.virtualOutputEnabled) throw new Error('DDTrans 虚拟麦克风配对已改变，请停止后重新开始发言翻译。');
             await mixBus.setRouting(currentRouting());
@@ -183,7 +184,7 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
         try {
             await mixBus?.setPlaybackAllowed(!config.useSystemAudio || mediaCapabilities.isolatedTts, config.useSystemAudio && !mediaCapabilities.isolatedTts ? '当前系统无法排除本应用声音，已暂停监听及虚拟输出以免重复采集' : '');
             if (current.stream) await mixBus?.connectOriginalStream(current.stream);
-            if (config.mode === 'outgoing' && !mixBus.getSnapshot().virtualOutputReady) throw new Error(mixBus.getSnapshot().virtualError || '无法打开 DDTrans Virtual Input，发言翻译尚未启动。');
+            if (config.mode === 'outgoing' && !mixBus.getSnapshot().virtualOutputReady) throw new Error(mixBus.getSnapshot().virtualError || '无法打开虚拟音频播放端，发言翻译尚未启动。');
             return current;
         } catch (error) { await current.stop(); throw error; }
     }
@@ -244,7 +245,7 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
         await refreshDevices();
         let nextConfig;
         if (mode === 'outgoing') {
-            const pair = resolveDDTransVirtualPair(deviceReport);
+            const pair = resolveDDTransVirtualPair(deviceReport, audioRouting);
             if (!pair.available) throw new Error(pair.message);
             const source = resolveOutgoingMicrophone(deviceReport, options.deviceId || 'default');
             if (!source.available) throw new Error(source.message);
@@ -297,7 +298,8 @@ export function createMediaSession({ createCapture, createPlayer, createSocket, 
                 }
             };
             await ready; setPhase('running'); capture?.resume();
-            inform(config.mode === 'outgoing' ? '发言翻译中。请在会议或游戏中选择 DDTrans Virtual Microphone。' : config.useSystemAudio && !mediaCapabilities.isolatedTts && config.audioEnabled ? '当前系统无法隔离译音，译音保存后可在记录中回放。' : '同传中，原文、译文和录音持续保存。', config.useSystemAudio && !mediaCapabilities.isolatedTts && config.audioEnabled ? 'warning' : 'info');
+            const captureName = config.mode === 'outgoing' ? resolveDDTransVirtualPair(deviceReport, audioRouting).capture?.label || '配对的虚拟麦克风' : '';
+            inform(config.mode === 'outgoing' ? `发言翻译中。请在会议或游戏中选择“${captureName}”。` : config.useSystemAudio && !mediaCapabilities.isolatedTts && config.audioEnabled ? '当前系统无法隔离译音，译音保存后可在记录中回放。' : '同传中，原文、译文和录音持续保存。', config.useSystemAudio && !mediaCapabilities.isolatedTts && config.audioEnabled ? 'warning' : 'info');
         } catch (error) {
             await releaseMedia();
             const old = socket; socket = null; old?.close(); setPhase('failed'); inform(error.message, 'error');

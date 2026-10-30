@@ -16,6 +16,7 @@ async function fixture({ isolated = true, systemAudio = true, failCapture = fals
         async disconnectOriginalStream() { this.original = null; },
         async disconnectTranslatedStream() { this.translated = null; },
         async stop() { this.original = this.translated = null; },
+        async testTone(options) { this.tested = options; return { target: options.target, captureVerified: false }; },
         getSnapshot() { return { ...this.routing, virtualOutputReady: Boolean(this.original && this.allowed && this.routing.virtualOutputEnabled && !routeError), virtualError: routeError }; },
     };
     const media = createMediaSession({
@@ -207,6 +208,21 @@ test('using the output capture endpoint as translation input is rejected without
     assert.equal(running.phase, 'running');
 });
 
+test('listening retains an explicitly selected speaker for manual virtual-output tests', async t => {
+    const devices = {
+        inputs: [{ deviceId: 'mic', label: 'Desk Microphone' }, { deviceId: 'capture', label: 'CABLE Output (VB-Audio Virtual Cable)' }],
+        outputs: [{ deviceId: 'speakers', label: 'Desk Speakers' }],
+    };
+    const f = await fixture({ devices, mix: true, audioSettings: { virtualOutputEnabled: true, virtualRenderDeviceId: 'speakers', virtualRenderDeviceLabel: 'Desk Speakers', virtualCaptureDeviceId: 'capture', virtualCaptureDeviceLabel: 'CABLE Output (VB-Audio Virtual Cable)' } });
+    t.after(() => f.media.execute('stop'));
+    const snapshot = await f.media.execute('start', { useSystemAudio: false, useMicAudio: true, deviceId: 'mic' });
+    assert.equal(snapshot.audioRouting.virtualOutputEnabled, true);
+    assert.equal(snapshot.audioRouting.virtualOutputReady, true);
+    assert.equal(f.bus.routing.virtualOutputEnabled, true);
+    await f.media.execute('audio-routing-test', { target: 'virtual' });
+    assert.deepEqual(f.bus.tested, { target: 'virtual' });
+});
+
 test('outgoing language preference leaves a listening session untouched and is used by a recreated owner', async t => {
     const f = await fixture({ devices: outgoingDevices(), mix: true });
     t.after(() => f.media.execute('stop'));
@@ -304,6 +320,18 @@ test('outgoing recognizes Chromium endpoint suffixes and excludes default aliase
     const snapshot = await f.media.execute('start', { mode: 'outgoing' });
     assert.equal(snapshot.audioRouting.virtualRenderDeviceId, 'dd-render');
     assert.equal(snapshot.audioRouting.virtualCaptureDeviceId, 'dd-capture');
+});
+
+test('outgoing supports a saved VB-CABLE pair when multiple known pairs are present', async t => {
+    const devices = outgoingDevices();
+    devices.outputs.push({ deviceId: 'cable-render', kind: 'audiooutput', label: 'CABLE Input (VB-Audio Virtual Cable)' });
+    devices.inputs.push({ deviceId: 'vb-capture', kind: 'audioinput', label: 'DDTrans Virtual Microphone (VB-Audio Virtual Cable)' });
+    const f = await fixture({ devices, mix: true, audioSettings: { virtualRenderDeviceId: 'cable-render', virtualRenderDeviceLabel: 'CABLE Input (VB-Audio Virtual Cable)', virtualCaptureDeviceId: 'vb-capture', virtualCaptureDeviceLabel: 'DDTrans Virtual Microphone (VB-Audio Virtual Cable)' } });
+    t.after(() => f.media.execute('stop'));
+    const snapshot = await f.media.execute('start', { mode: 'outgoing' });
+    assert.equal(snapshot.audioRouting.virtualRenderDeviceId, 'cable-render');
+    assert.equal(snapshot.audioRouting.virtualCaptureDeviceId, 'vb-capture');
+    assert.equal(snapshot.audioRouting.virtualOutputReady, true);
 });
 
 test('outgoing rejects virtual, system mix, unknown and unresolvable default inputs before capture', async t => {
