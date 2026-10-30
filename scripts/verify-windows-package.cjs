@@ -39,7 +39,7 @@ assert.ok(fs.existsSync(payload), `Missing bundled virtual-audio payload: ${payl
 
 const entries = asar.listPackage(appAsar)
   .map(entry => entry.replaceAll('\\', '/').replace(/^\/+/, ''));
-for (const expected of ['app/index.html', 'electron/main.js', 'package.json', 'node_modules/ws/package.json']) {
+for (const expected of ['app/index.html', 'electron/main.js', 'package.json', 'node_modules/ws/package.json', 'app/vendor/remixicon/remixicon.css', 'app/vendor/remixicon/remixicon.woff2', 'app/vendor/remixicon/LICENSE', 'resources/icons/千问logo.png', 'resources/icons/logo.png', 'resources/icons/bg.jpg']) {
   assert.ok(entries.includes(expected), `Missing packaged application file: ${expected}`);
 }
 for (const entry of entries) {

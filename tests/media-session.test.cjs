@@ -67,6 +67,23 @@ async function fixture({ isolated = true, systemAudio = true, failCapture = fals
     return { media, events, captures, players, sockets, requests, saved, bus };
 }
 const pcmAudio = { type: 'audio', audio: Buffer.from([1, 0, 2, 0]).toString('base64'), sample_rate: 24000 };
+test('reconnecting keeps capture for local saving, clears TTS, and retains terminal error details', async t => {
+    const f = await fixture();
+    t.after(() => f.media.execute('stop'));
+    await f.media.execute('start', { targetLanguage: 'en', audioEnabled: true, useSystemAudio: true });
+    const socket = f.sockets[0];
+    socket.receive(pcmAudio); await drain();
+    socket.receive({ type: 'state', state: 'reconnecting' }); await drain();
+    assert.equal(f.captures[0].stopped, false);
+    assert.equal(f.players[0].stopped, true);
+    f.captures[0].options.onFrame({ pcm: new Int16Array([1, 2]) });
+    assert.equal(socket.frames.length, 1);
+    socket.receive({ type: 'stopped', status: 'failed', error: 'API Key 验证失败（HTTP 401）' }); await drain();
+    const snapshot = await f.media.execute('snapshot');
+    assert.equal(snapshot.phase, 'failed');
+    assert.match(snapshot.feedback.message, /401/);
+    assert.equal(f.captures[0].stopped, true);
+});
 function outgoingDevices() {
     return {
         inputs: [

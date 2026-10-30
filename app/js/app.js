@@ -5,7 +5,7 @@ import * as lang from './lang.js';
 import * as audioSource from './audio-source.js';
 import * as translation from './translation.js';
 import { buildVolumeBars } from './utils.js';
-import { TEXT_ONLY_LANGS } from './config.js';
+import { TEXT_ONLY_LANGS, LANG_DATA } from './config.js';
 import { mediaCommand } from './media-client.js';
 
 const run = action => async event => { try { await action(event); } catch (error) { translation.showFeedback(error.message, 'error'); if (dom.hotwordModalOverlay.classList.contains('show')) document.getElementById('hotwordError').textContent = error.message; } };
@@ -14,9 +14,12 @@ state.setMeetingName(params.get('name') || '同传 ' + new Date().toLocaleString
 dom.sessionTitle.textContent = state.meetingName;
 if (params.get('targetLang')) state.setCurrentTargetLang(params.get('targetLang'));
 if (params.get('audioDevice')) state.setSelectedMicDeviceId(params.get('audioDevice'));
-try { const saved = JSON.parse(localStorage.getItem('ddtrans.hotwords') || '[]'); if (Array.isArray(saved)) state.setHotwords(saved.filter(word => typeof word.source === 'string' && typeof word.target === 'string').slice(0, 1000)); } catch (_) {}
-lang.updateLangDisplay();
-lang.initLangDropdown('target', dom.targetLangDropdown, dom.targetLangTrigger, dom.targetLangMenu);
+try {
+    const response = await fetch('/api/hotwords');
+    if (!response.ok) throw new Error('无法读取热词配置');
+    state.setHotwords(await response.json());
+} catch (error) { translation.showFeedback(error.message, 'error'); }
+lang.initLanguageSelect();
 buildVolumeBars(dom.fcVolumeBars, 16);
 audioSource.updateAudioSourceLabel();
 view.applyLayout(); view.updateFontSize();
@@ -118,12 +121,12 @@ function closeHotwords() { dom.hotwordModalOverlay.classList.remove('show'); }
 dom.hotwordBtn.addEventListener('click', () => {
     document.getElementById('hotwordError').textContent = '';
     dom.hotwordList.replaceChildren(); state.hotwords.forEach(word => hotwordRow(word.source, word.target)); if (!state.hotwords.length) hotwordRow();
-    document.getElementById('hotwordSourceLang').textContent = '自动识别'; document.getElementById('hotwordTargetLang').textContent = dom.targetLangName.textContent;
+    document.getElementById('hotwordSourceLang').textContent = '自动识别'; document.getElementById('hotwordTargetLang').textContent = LANG_DATA.find(language => language.code === state.currentTargetLang)?.name || state.currentTargetLang;
     dom.hotwordModalOverlay.classList.add('show');
 });
 dom.hotwordAdd.addEventListener('click', () => { if (dom.hotwordList.children.length < 1000) hotwordRow(); });
 dom.hotwordModalClose.addEventListener('click', closeHotwords); dom.hotwordCancel.addEventListener('click', closeHotwords);
-dom.hotwordConfirm.addEventListener('click', run(() => {
+dom.hotwordConfirm.addEventListener('click', run(async () => {
     const words = [], seen = new Set();
     for (const row of dom.hotwordList.children) {
         const [source, target] = [...row.querySelectorAll('input')].map(input => input.value.trim());
@@ -132,7 +135,10 @@ dom.hotwordConfirm.addEventListener('click', run(() => {
         if (seen.has(source)) throw new Error('热词原文重复：' + source);
         seen.add(source); words.push({ source, target });
     }
-    state.setHotwords(words); localStorage.setItem('ddtrans.hotwords', JSON.stringify(words)); closeHotwords(); translation.showFeedback('热词已保存，将用于下一次开始的同传。', 'success');
+    const response = await fetch('/api/hotwords', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(words) });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || '热词保存失败');
+    state.setHotwords(result); closeHotwords(); translation.showFeedback('热词已保存，将用于下一次开始的同传。', 'success');
 }));
-document.addEventListener('click', () => { lang.closeAllLangDropdowns(); [dom.viewModeMenu, dom.layoutMenu, dom.shareMenu, dom.audioSourcePanel, dom.fcSourcePanel].forEach(menu => menu.classList.remove('show')); });
+document.addEventListener('click', () => { [dom.viewModeMenu, dom.layoutMenu, dom.shareMenu, dom.audioSourcePanel, dom.fcSourcePanel].forEach(menu => menu.classList.remove('show')); });
 document.addEventListener('keydown', event => { if (event.key === 'Escape') { closeHotwords(); [dom.stopConfirmOverlay, dom.restartConfirmOverlay].forEach(modal => modal.classList.remove('show')); } });

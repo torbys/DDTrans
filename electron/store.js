@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { DatabaseSync } = require('node:sqlite');
 
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const SEGMENT_STATUSES = new Set(['pending', 'final', 'interrupted']);
 const SESSION_FINISH_STATUSES = new Set(['completed', 'interrupted', 'failed']);
 const SEGMENT_FIELDS = [
@@ -68,6 +68,10 @@ function createStore({ dbPath, mediaDir }) {
         CREATE TABLE IF NOT EXISTS schema_meta (
           key TEXT PRIMARY KEY,
           value TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS hotwords (
+          source TEXT PRIMARY KEY,
+          target TEXT NOT NULL
         );
         CREATE TABLE IF NOT EXISTS sessions (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -570,7 +574,31 @@ function createStore({ dbPath, mediaDir }) {
     }
   }
 
+  function getHotwords() {
+    return db.prepare('SELECT source, target FROM hotwords ORDER BY rowid').all().map(row => ({ ...row }));
+  }
+  function setHotwords(words) {
+    if (!Array.isArray(words) || words.length > 1000) throw new Error('热词最多1000项');
+    const seen = new Set();
+    const next = words.map(word => {
+      const source = requiredText(word?.source, '热词原文').trim();
+      const target = requiredText(word?.target, '热词译文').trim();
+      if (source.length > 500 || target.length > 500) throw new Error('热词每项最多500字');
+      if (seen.has(source)) throw new Error('热词原文重复：' + source);
+      seen.add(source);
+      return { source, target };
+    });
+    transaction(() => {
+      db.exec('DELETE FROM hotwords');
+      const insert = db.prepare('INSERT INTO hotwords(source, target) VALUES (?, ?)');
+      for (const word of next) insert.run(word.source, word.target);
+    });
+    return getHotwords();
+  }
+
   return {
+    getHotwords,
+    setHotwords,
     createSession,
     upsertSegment,
     getSession,

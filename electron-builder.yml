@@ -8,6 +8,7 @@ asar: true
 files:
   - app/**/*
   - electron/**/*
+  - resources/icons/**/*
   - package.json
   - node_modules/ws/**/*
   - '!**/.env'

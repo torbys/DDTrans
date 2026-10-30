@@ -34,9 +34,10 @@ const media = createMediaSession({
         }
     },
     publish: event => bridge.publishMediaEvent(event),
-    loadHotwords: () => {
-        try { return JSON.parse(localStorage.getItem('ddtrans.hotwords') || '[]'); }
-        catch { return []; }
+    loadHotwords: async () => {
+        const response = await fetch('/api/hotwords');
+        if (!response.ok) throw new Error('无法读取热词配置');
+        return response.json();
     },
 });
 bridge.onHostCommand(async ({ requestId, command, payload }) => {

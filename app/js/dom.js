@@ -53,20 +53,7 @@ export const viewModeDropdown = document.getElementById("viewModeDropdown");
 export const viewModeMenu = document.getElementById("viewModeMenu");
 export const viewModeLabel = document.getElementById("viewModeLabel");
 
-// 语言选择（自定义下拉）
-export const sourceLangDropdown = document.getElementById("sourceLangDropdown");
-export const sourceLangTrigger = document.getElementById("sourceLangTrigger");
-export const sourceLangMenu = document.getElementById("sourceLangMenu");
-export const sourceLangName = document.getElementById("sourceLangName");
-export const sourceLangNative = document.getElementById("sourceLangNative");
-
-export const targetLangDropdown = document.getElementById("targetLangDropdown");
-export const targetLangTrigger = document.getElementById("targetLangTrigger");
-export const targetLangMenu = document.getElementById("targetLangMenu");
-export const targetLangName = document.getElementById("targetLangName");
-export const targetLangNative = document.getElementById("targetLangNative");
-
-export const langSwapBtn = document.getElementById("langSwapBtn");
+export const targetLanguageSelect = document.getElementById("targetLanguageSelect");
 
 // 音频输入源
 export const audioSourceBtn = document.getElementById("audioSourceBtn");
