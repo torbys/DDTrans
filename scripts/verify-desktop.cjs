@@ -70,10 +70,23 @@ app.on('browser-window-created', (_event, window) => {
 });
 async function verify(window) {
     await poll(() => host, 'media host ready'); await injection;
-    await ui(window, 'document.getElementById("createMeetingCard").click();document.getElementById("meetingNameInput").value="Desktop milestone verification";document.getElementById("modalConfirm").click()');
+    await poll(() => window.isVisible(), 'main window visible');
+    await ui(window, 'document.getElementById("createMeetingCard").click();document.getElementById("meetingNameInput").value="Desktop milestone verification";document.getElementById("modalTargetLanguage").value="en";document.getElementById("modalTargetLanguage").dispatchEvent(new Event("change"))');
+    const creation = await ui(window, '({source:!!document.getElementById("modalSourceLangDropdown"),swap:!!document.getElementById("modalLangSwapBtn"),target:document.getElementById("modalTargetLanguage").value})');
+    assert.deepEqual(creation, { source: false, swap: false, target: 'en' });
+    await ui(window, 'Promise.all(document.getAnimations().map(animation=>animation.finished))');
+    await ui(window, 'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    fs.writeFileSync(path.join(probeDir, 'creation-ui.png'), (await window.webContents.capturePage()).toPNG());
+    await ui(window, 'document.getElementById("modalConfirm").click()');
     await poll(() => !window.webContents.isLoadingMainFrame() && window.webContents.getURL().includes('/index.html'), 'meeting page');
     await poll(() => ui(window, 'Boolean(document.getElementById("startBtn"))'), 'start control');
     const snapshot = () => ui(window, 'window.electronAPI.getMediaSnapshot()');
+    const visual = await ui(window, '(async()=>{await document.fonts.ready; return {images:[...document.images].every(image=>image.complete&&image.naturalWidth>0),font:document.fonts.check("20px remixicon"),target:document.getElementById("targetLanguageSelect").value,source:!!document.getElementById("sourceLangDropdown"),hint:document.getElementById("sessionStatusRow").hidden,icons:[...document.querySelectorAll("#settingsBtn i,#overlayBtn i")].map(icon=>getComputedStyle(icon,"::before").content)}})()');
+    assert.equal(visual.images, true); assert.equal(visual.font, true); assert.equal(visual.target, 'en'); assert.equal(visual.source, false); assert.equal(visual.hint, true);
+    assert.equal(visual.icons.length, 2); assert.ok(visual.icons.every(content => content && content !== 'none'));
+    report.checks.localIconsAndTargetOnlyLanguage = visual;
+    await ui(window, 'new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)))');
+    fs.writeFileSync(path.join(probeDir, 'session-ui.png'), (await window.webContents.capturePage()).toPNG());
     if (!(await ui(window, 'document.getElementById("aiVoiceBtn").getAttribute("aria-pressed")==="true"'))) await ui(window, 'document.getElementById("aiVoiceBtn").click()');
     await ui(window, 'document.getElementById("startBtn").click()');
     const running = await poll(async () => { const value = await snapshot(); return value.phase === 'running' && value.segments.length > 0 && value; }, 'translation running');
