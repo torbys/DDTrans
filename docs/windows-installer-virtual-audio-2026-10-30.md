@@ -65,7 +65,7 @@ node scripts/verify-packaged-app.cjs
 node scripts/verify-packaged-app.cjs 'C:/Program Files/DDTrans/DDTrans.exe' --require-virtual-audio
 ```
 
-`dist:win` 在构建机下载固定版本的原厂驱动；生成的 EXE 是离线完整安装包。`verify:package` 检查真实 ASAR 与原厂 payload，不把开发目录、凭据或编译中间产物打入安装包。
+`dist:win` 在构建机下载固定版本的原厂驱动；生成的 EXE 是离线完整安装包。打包命令显式使用 `--publish never`，避免 electron-builder 在 CI 中隐式要求发布凭据；版本标签的 Release 上传由工作流内单独的 `gh release` 步骤使用 GitHub 自动令牌完成。手动构建只生成供下载的 artifact。`verify:package` 检查真实 ASAR 与原厂 payload，不把开发目录、凭据或编译中间产物打入安装包。
 
 安装后的只读检查与音频探针：
 
