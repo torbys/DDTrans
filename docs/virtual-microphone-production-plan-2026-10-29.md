@@ -1,5 +1,7 @@
 # DDTrans Virtual Microphone 生产方案
 
+> 2026-10-30 更新：安装路线已改为随 DDTrans EXE 集成原厂签名的 VB-CABLE，不再要求用户安排测试签名环境。当前实现与验收见 [Windows 安装方案](windows-installer-virtual-audio-2026-10-30.md)。以下保留当时的开发记录。
+
 > 2026-10-29 开发进展：已按自有最小驱动路线实现源码、x64 构建、开发签名与设置页发言翻译；尚未安装/加载或通过外部收音验证。用户已选择自有最小驱动；下文保留路线依据与后续验收，当前实测状态以 [开发记录](virtual-microphone-development-2026-10-29.md) 为准。
 
 日期：2026-10-29

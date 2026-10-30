@@ -8,11 +8,23 @@
 
 ![Qwen 3.8 真实联调完成后的界面](docs/images/realtime-3.8-verified.png)
 
-## 自有虚拟麦克风开发版
+## Windows 安装版与虚拟麦克风
 
-Windows 11 x64 的自有驱动源码、构建脚本和原生收音探针已加入仓库。设置页新增“发言翻译”，可独立保存发给对方的默认语言，源语言自动识别；检测到 DDTrans 播放/录音端点后自动配对，默认只发送译音。
+下载安装 `DDTrans-Setup-2.1.0-x64.exe` 时，虚拟音频设备随应用一并安装，无需另装音频软件。首次安装后按提示正常重启 Windows，不需要进入 BIOS 或更改 Secure Boot。
 
-当前已完成离线编译与缓冲测试，开发驱动尚未在本机安装或加载。端点安装前，会议/游戏的麦克风列表不会出现 DDTrans Virtual Microphone。构建不需要重启；测试签名环境和设备加载需单独安排，脚本不会修改启动配置或自动重启。具体命令、开发包与验收边界见 [自有虚拟麦克风开发记录](docs/virtual-microphone-development-2026-10-29.md)。
+设备由 **VB-CABLE / VB-Audio Software** 提供；VB-CABLE 是 Donationware，欢迎通过 [原厂官网](https://www.vb-cable.com/) 捐赠支持。新装录音端点显示为 `DDTrans Virtual Microphone (VB-Audio Virtual Cable)`；已有 VB-CABLE 直接复用并保留原名。设备来源、分发条件与验收边界见 [Windows 安装方案](docs/windows-installer-virtual-audio-2026-10-30.md)。
+
+打开音频设置的“翻译服务配置”，填入自己的实时 WSS 地址和 API Key。安装包不包含项目 Key；Key 在本机加密保存，数据库和录音写入用户目录。设置默认发送语言，开始“发言翻译”，再在会议或游戏里选择设置页显示的虚拟麦克风。源语言自动识别，默认只发送译音，可加入原声并单独调整音量。
+
+开发者构建完整离线 EXE：
+
+```powershell
+npm ci
+npm run dist:win
+npm run verify:package
+```
+
+构建机需要 Visual Studio C++ x64 工具及 Windows SDK，无需 WDK。Windows CI 可手动构建，推送版本标签时会构建并附加安装包到 GitHub Release。以下为从源码开发的启动方式。
 
 ## 安装与启动
 
@@ -22,7 +34,7 @@ Windows 11 x64 的自有驱动源码、构建脚本和原生收音探针已加�
 npm ci
 ```
 
-当前依赖为 Electron `45.1.0`、`ws 8.22.0`。Electron 内置 Node `24.22.1` 和 SQLite `3.53.4`，使用内置 `node:sqlite`，不需要另装数据库服务。
+运行依赖为 Electron `45.1.0`、`ws 8.22.0`；安装包使用 `electron-builder 26.18.0` 构建。Electron 内置 Node `24.22.1` 和 SQLite `3.53.4`，使用内置 `node:sqlite`，不需要另装数据库服务。
 
 在根目录创建或更新自己的 `.env`。下面均为占位值，不是可用凭据：
 
@@ -55,7 +67,7 @@ Electron 主进程会自动以 `utilityProcess` 启动 `electron/service.js`，�
 | `DASHSCOPE_API_KEY` | 使用你已有、对该业务空间有效的 API Key |
 | `QWEN_WS_URL` | 完整的 Qwen 3.8 realtime WSS 地址，必填 |
 | `SERVER_PORT` | 可选，默认 `0`；可指定 `0–65535` 的整数 |
-| `DDTRANS_DATA_DIR` | 可选，数据库和媒体目录；默认仓库根目录下的 `data/` |
+| `DDTRANS_DATA_DIR` | 开发模式可选，默认仓库根目录的 `data/`；安装版固定使用当前用户目录下的 `data/` |
 
 仅调试本地服务时可执行 `npm run serve`，它使用终端中的 Node；正常桌面使用执行 `npm start` 即可。旧 Python 源码已先备份至 `data/backups/legacy-python-2026-10-28.zip`，再从仓库的应用源码中移除。
 
@@ -84,7 +96,7 @@ Electron 主进程会自动以 `utilityProcess` 启动 `electron/service.js`，�
 
 本地监听默认只听译音，也可切换为原声与译音的混合预听；其音量仅作用于监听。译音总音量同时作用于监听和独立输出。混音可另行发送到用户选定的输出设备，供已有虚拟音频设备使用；监听和虚拟输出互不复用同一条路由。设备按 `deviceId` 保存，仅在完整 label 唯一匹配时重绑定；设备缺失会关闭该输出并提示，不会回退到默认扬声器。
 
-如果要让 Teams、Discord 或游戏收到 DDTrans 的混音，需要先安装 Windows 虚拟音频驱动（例如 VB-CABLE 或 VoiceMeeter），在设置页选择它的虚拟播放端点，然后在外部软件的麦克风列表里选择对应的虚拟输入端点。Electron 和 Web Audio 不能单独创建一个新的 Windows 麦克风设备；本机未检测到虚拟设备，因此未完成外部会议/游戏 Capture Endpoint 实测，也没有创建 `DDTrans Virtual Microphone`。
+Windows 安装版随应用集成 VB-CABLE 虚拟音频驱动。设置页会识别播放/录音配对并显示外部软件应选择的麦克风；新安装的主录音端点显示为 `DDTrans Virtual Microphone (VB-Audio Virtual Cable)`。已有设备直接复用；明确选择的其他虚拟音频路由与扬声器试播仍可使用。实际安装、收音和重启验证以 [当前安装记录](docs/windows-installer-virtual-audio-2026-10-30.md) 为准。
 
 [悬浮窗实现、需求调整与实测记录](docs/overlay-implementation-2026-10-28.md)
 
@@ -104,7 +116,7 @@ Windows 电脑声音采集请求 `restrictOwnAudio: true`，在支持自身音�
 
 ## 数据与恢复
 
-默认目录结构：
+源码开发的默认目录结构如下；安装版使用当前用户 `userData/data` 中的同一结构：
 
 ```text
 data/
@@ -146,8 +158,9 @@ npm test
 | `data/probes/system-capture.json` | Electron 真实系统声格式及资源释放检查，16 kHz / 320 样本每帧；无录音保存或上传 |
 | `data/probes/audio-routing-verification.json` | 48 kHz 真实混音、显式所选设备/回环数值、增益比例、限幅计数、断开静音、设置保存验证 |
 | `docs/audio-routing-implementation-2026-10-29.md` | 混音总线、设置保存、虚拟设备边界和本轮验证结果 |
-| `docs/virtual-microphone-production-plan-2026-10-29.md` | 系统可枚举虚拟麦克风的实现、主线判断和制作计划 |
-| `docs/virtual-microphone-development-2026-10-29.md` | 自有驱动构建、发言翻译设置、开发包与未加载边界 |
+| `docs/windows-installer-virtual-audio-2026-10-30.md` | 当前单 EXE 安装、签名驱动集成、端点命名与验收 |
+| `docs/virtual-microphone-production-plan-2026-10-29.md` | 自研驱动历史方案，已由随包签名驱动路线取代 |
+| `docs/virtual-microphone-development-2026-10-29.md` | 自研驱动历史开发记录，源码可从 Git 历史查阅 |
 | `data/probes/virtual-microphone-development.json` | 驱动构建/缓冲/INF、应用回归、开发包哈希和安装前状态 |
 | `data/probes/migration-check.json` | 原库副本的迁移、逐列数据保留和完整性检查 |
 | `data/probes/production-startup.json` | 正式旧库自动备份与迁移完成，原有字段逐列保留 |

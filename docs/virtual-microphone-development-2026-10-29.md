@@ -1,5 +1,7 @@
 # DDTrans 自有虚拟麦克风开发记录
 
+> 2026-10-30 更新：安装路线已改为随 DDTrans EXE 集成原厂签名的 VB-CABLE，不再要求用户安排测试签名环境。当前实现与验收见 [Windows 安装方案](windows-installer-virtual-audio-2026-10-30.md)。以下保留当时的开发记录。
+
 日期：2026-10-29。范围：Windows 11 x64，自有最小 Render/Capture 驱动、设置页发言翻译、可重复的构建与验证。
 
 ## 当前交付状态
