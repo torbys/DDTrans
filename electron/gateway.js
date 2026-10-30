@@ -30,7 +30,7 @@ function createRealtimeGateway({ endpoint, apiKey, transport = 'websocket', onEv
     if (!closing) onFailure(error);
   }
   async function connect(session) {
-    if (!apiKey) throw new Error('DASHSCOPE_API_KEY 未设置');
+    if (!apiKey) throw new Error('未配置 API Key，请打开翻译服务配置后保存');
     return new Promise((resolve, reject) => {
       rejectConnect = reject;
       connectTimer = setTimeout(() => fail(new Error('模型会话配置超时')), 20000);

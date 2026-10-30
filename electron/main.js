@@ -1,8 +1,10 @@
-const { app, BrowserWindow, clipboard, desktopCapturer, dialog, ipcMain, powerSaveBlocker, screen, session, shell, utilityProcess } = require('electron');
+const { app, BrowserWindow, clipboard, desktopCapturer, dialog, ipcMain, powerSaveBlocker, safeStorage, screen, session, shell, utilityProcess } = require('electron');
 const os = require('node:os');
 const path = require('node:path');
 const { createOverlayPreferences } = require('./window-preferences.js');
 const { createAudioSettings } = require('./audio-settings.js');
+const { loadConfig } = require('./config.js');
+const { createConnectionSettings, validateApiKey } = require('./connection-settings.js');
 
 if (process.env.DDTRANS_TEST_USER_DATA) app.setPath('userData', process.env.DDTRANS_TEST_USER_DATA);
 
@@ -21,6 +23,7 @@ let origin;
 let mainWindow;
 let manageWindow;
 let audioSettingsWindow;
+let connectionSettingsWindow;
 let mediaHost;
 let overlayWindow;
 let overlayPreferences;
@@ -36,6 +39,12 @@ let overlayClampTimer;
 let overlayReturnPage = 'home.html';
 let returningToMain = false;
 let audioSettingsStore;
+let connectionSettingsStore;
+let backendConfig;
+let backendRequestId = 0;
+let connectionSaveChain = Promise.resolve();
+let connectionSaveCount = 0;
+const backendRequests = new Map();
 const hostPending = new Map();
 const detailWindows = new Map();
 
@@ -111,7 +120,7 @@ function createWindow(page, { width = 1200, height = 800, minWidth = 1000, minHe
 }
 
 function uiWindows() {
-  return [mainWindow, manageWindow, audioSettingsWindow, overlayWindow, ...detailWindows.values()]
+  return [mainWindow, manageWindow, audioSettingsWindow, connectionSettingsWindow, overlayWindow, ...detailWindows.values()]
     .filter(window => window && !window.isDestroyed());
 }
 
@@ -161,6 +170,7 @@ function attachStandardWindowLifecycle(window, kind, id) {
     if (kind === 'main') mainWindow = null;
     if (kind === 'manage') manageWindow = null;
     if (kind === 'settings') audioSettingsWindow = null;
+    if (kind === 'connection-settings') connectionSettingsWindow = null;
     if (kind === 'detail') detailWindows.delete(id);
   });
 }
@@ -254,6 +264,9 @@ function rejectPendingHostRequests(error) {
 
 async function hostCommand(command, payload = {}, timeoutMs = HOST_TIMEOUT_MS) {
   if (!HOST_COMMANDS.has(command)) return Promise.reject(new Error('不支持的媒体命令'));
+  if (connectionSaveCount > 0 && ACTIVATION_COMMANDS.has(command) && ['start', 'resume'].includes(command)) {
+    return Promise.reject(new Error('翻译服务配置正在保存，请稍后再开始或继续同传'));
+  }
   if (!mediaHost || mediaHost.isDestroyed() || !hostReady) return Promise.reject(new Error('媒体宿主尚未就绪'));
   const host = mediaHost;
   if (ACTIVATION_COMMANDS.has(command)) {
@@ -420,14 +433,57 @@ async function returnToMain() {
   return overlayTransition;
 }
 
-async function startBackend() {
+function rejectBackendRequests(error) {
+  for (const { reject, timer } of backendRequests.values()) {
+    clearTimeout(timer);
+    reject(error);
+  }
+  backendRequests.clear();
+}
+
+function configureBackend(config, { allowEmptyApiKey = false } = {}) {
+  if (!backend?.pid) return Promise.reject(new Error('同传后台尚未就绪'));
+  const requestId = String(++backendRequestId);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      backendRequests.delete(requestId);
+      reject(new Error('翻译服务配置更新超时'));
+    }, 10_000);
+    backendRequests.set(requestId, { resolve, reject, timer });
+    try { backend.postMessage({ type: 'configure', requestId, config, allowEmptyApiKey }); }
+    catch (error) {
+      clearTimeout(timer);
+      backendRequests.delete(requestId);
+      reject(error);
+    }
+  });
+}
+
+function handleBackendMessage(message) {
+  if (!message?.requestId || !['configured', 'configure-error'].includes(message.type)) return false;
+  const pending = backendRequests.get(message.requestId);
+  if (!pending) return true;
+  clearTimeout(pending.timer);
+  backendRequests.delete(message.requestId);
+  if (message.type === 'configured') pending.resolve(message.result);
+  else pending.reject(new Error(message.message || '翻译服务配置更新失败'));
+  return true;
+}
+
+async function startBackend(config) {
   return new Promise((resolve, reject) => {
     let started = false;
-    backend = utilityProcess.fork(path.join(__dirname, 'service.js'), [], { serviceName: 'DDtrans Gateway', stdio: 'pipe' });
+    const startupConfig = app.isPackaged ? { ...config, apiKey: '' } : config;
+    backend = utilityProcess.fork(path.join(__dirname, 'service.js'), [], {
+      serviceName: 'DDtrans Gateway',
+      stdio: 'pipe',
+      env: { ...process.env, DDTRANS_SERVICE_CONFIG: JSON.stringify(startupConfig) },
+    });
     const timeout = setTimeout(() => reject(new Error('同传后台启动超时')), 20_000);
     backend.stdout?.on('data', chunk => process.stdout.write(chunk));
     backend.stderr?.on('data', chunk => process.stderr.write(chunk));
     backend.on('message', message => {
+      if (handleBackendMessage(message)) return;
       if (message.type === 'ready' && !started) {
         started = true;
         clearTimeout(timeout);
@@ -442,6 +498,7 @@ async function startBackend() {
     });
     backend.on('exit', code => {
       clearTimeout(timeout);
+      rejectBackendRequests(new Error('同传后台已退出'));
       if (!quitting) {
         const message = '同传后台已退出：' + code;
         if (started) {
@@ -486,12 +543,13 @@ async function handleMediaHostFailure(message) {
 }
 
 function destroyWindows() {
-  for (const window of [mainWindow, manageWindow, audioSettingsWindow, overlayWindow, ...detailWindows.values(), mediaHost]) {
+  for (const window of [mainWindow, manageWindow, audioSettingsWindow, connectionSettingsWindow, overlayWindow, ...detailWindows.values(), mediaHost]) {
     if (window && !window.isDestroyed()) window.destroy();
   }
   mainWindow = null;
   manageWindow = null;
   audioSettingsWindow = null;
+  connectionSettingsWindow = null;
   overlayWindow = null;
   mediaHost = null;
   detailWindows.clear();
@@ -525,6 +583,35 @@ function windowsBuildNumber() {
 function getAudioSettingsStore() {
   if (!audioSettingsStore) audioSettingsStore = createAudioSettings({ userDataPath: app.getPath('userData') });
   return audioSettingsStore;
+}
+
+function getConnectionSettingsStore() {
+  if (!connectionSettingsStore) connectionSettingsStore = createConnectionSettings({ userDataPath: app.getPath('userData'), safeStorage });
+  return connectionSettingsStore;
+}
+
+function loadRuntimeConfig() {
+  const dataDir = app.isPackaged ? path.join(app.getPath('userData'), 'data') : undefined;
+  const config = loadConfig({ root: app.getAppPath(), dataDir, loadEnv: !app.isPackaged, env: app.isPackaged ? {} : process.env });
+  if (!app.isPackaged) return config;
+  try {
+    const saved = getConnectionSettingsStore().get();
+    return { ...config, endpoint: saved.endpoint, apiKey: saved.hasKey ? getConnectionSettingsStore().getSecret() : '' };
+  } catch (error) {
+    console.warn('未使用已保存的翻译服务配置：' + error.message);
+    return config;
+  }
+}
+
+function connectionSettingsView() {
+  return { endpoint: backendConfig.endpoint, hasKey: Boolean(backendConfig.apiKey) };
+}
+
+function serializeConnectionSave(work) {
+  connectionSaveCount++;
+  const operation = connectionSaveChain.then(work, work);
+  connectionSaveChain = operation.catch(() => {});
+  return operation.finally(() => { connectionSaveCount--; });
 }
 
 function mediaCapabilities() {
@@ -633,6 +720,68 @@ ipcMain.handle('open-audio-settings', event => {
   attachStandardWindowLifecycle(audioSettingsWindow, 'settings');
   return true;
 });
+ipcMain.handle('open-connection-settings', event => {
+  trusted(event);
+  if (focusWindow(connectionSettingsWindow)) return true;
+  connectionSettingsWindow = createWindow('connection.html', { width: 620, height: 580, minWidth: 560, minHeight: 520 });
+  if (overlayWindow && !overlayWindow.isDestroyed()) connectionSettingsWindow.setAlwaysOnTop(true, 'screen-saver');
+  attachStandardWindowLifecycle(connectionSettingsWindow, 'connection-settings');
+  return true;
+});
+ipcMain.handle('get-connection-settings', event => {
+  trusted(event);
+  getConnectionSettingsStore().get();
+  return connectionSettingsView();
+});
+ipcMain.handle('save-connection-settings', (event, input) => {
+  trusted(event);
+  return serializeConnectionSave(async () => {
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('无效翻译服务配置');
+    const endpoint = input.endpoint;
+    if (typeof endpoint !== 'string') throw new Error('请输入 Qwen 3.8 实时 WSS 地址');
+    if (input.apiKey !== undefined && typeof input.apiKey !== 'string') throw new Error('API Key 格式无效');
+    const saved = getConnectionSettingsStore();
+    const profile = saved.get();
+    const enteredKey = input.apiKey?.trim();
+    let apiKey;
+    let profileKey;
+    if (enteredKey) {
+      apiKey = validateApiKey(enteredKey);
+      profileKey = apiKey;
+    } else if (profile.hasKey) {
+      apiKey = saved.getSecret();
+      profileKey = undefined;
+    } else if (backendConfig.apiKey) {
+      apiKey = backendConfig.apiKey;
+      profileKey = undefined;
+    } else {
+      throw new Error('请输入 API Key');
+    }
+    const previous = { ...backendConfig };
+    const staged = saved.prepareSave({ endpoint, apiKey: profileKey });
+    const next = { ...previous, endpoint, apiKey };
+    let accepted;
+    try {
+      accepted = await configureBackend(next);
+    } catch (error) {
+      staged.cleanup();
+      throw error;
+    }
+    try {
+      const persisted = staged.commit();
+      backendConfig = { ...next, endpoint: accepted.endpoint };
+      return { ...persisted, hasKey: true };
+    } catch (error) {
+      try {
+        await configureBackend(previous, { allowEmptyApiKey: true });
+      } catch (rollbackError) {
+        backendConfig = { ...next, endpoint: accepted.endpoint };
+        throw new Error('连接设置未写入，且未能恢复运行配置：' + rollbackError.message);
+      }
+      throw new Error('连接设置未写入，已恢复运行配置：' + error.message);
+    }
+  });
+});
 ipcMain.handle('open-system-audio-settings', async event => {
   trusted(event);
   if (process.platform !== 'win32') return false;
@@ -696,7 +845,9 @@ else {
   app.whenReady().then(async () => {
     overlayPreferences = createOverlayPreferences({ userDataPath: app.getPath('userData') });
     getAudioSettingsStore();
-    await startBackend();
+    backendConfig = loadRuntimeConfig();
+    await startBackend(backendConfig);
+    if (app.isPackaged && backendConfig.apiKey) await configureBackend(backendConfig);
     setupSessionPolicies();
     await createMediaHost();
     mainWindow = createWindow('home.html');

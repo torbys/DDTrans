@@ -7,13 +7,16 @@ const { once } = require('node:events');
 
 const WebSocket = require('ws');
 const { startService } = require('../electron/service.js');
+const { createConnectionSettings } = require('../electron/connection-settings.js');
 
 const ROOT = path.resolve(__dirname, '..');
 const MODEL = 'qwen3.8-livetranslate-flash-realtime';
+const DEFAULT_ENDPOINT = 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=' + MODEL;
 
 function makeGatewayFactory({ deferFinish = false } = {}) {
-  const gateways = [];
-  const factory = ({ onEvent }) => {
+  const gateways = [], configs = [];
+  const factory = ({ onEvent, endpoint, apiKey }) => {
+    configs.push({ endpoint, apiKey });
     let resolveFinish;
     const gateway = {
       metrics: { connect_ms: 1 },
@@ -37,13 +40,21 @@ function makeGatewayFactory({ deferFinish = false } = {}) {
     gateways.push(gateway);
     return gateway;
   };
-  return { factory, gateways };
+  return { factory, gateways, configs };
 }
 
-async function startTemporaryService(t, gatewayOptions) {
+function fakeSafeStorage() {
+  return {
+    isEncryptionAvailable: () => true,
+    encryptString: value => Buffer.from('protected:' + value),
+    decryptString: value => Buffer.from(value).toString().slice('protected:'.length),
+  };
+}
+
+async function startTemporaryService(t, gatewayOptions, configPatch = {}) {
   const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddtrans-service-'));
   const gateways = makeGatewayFactory(gatewayOptions);
-  const service = await startService({ root: ROOT, dataDir, port: 0, model: MODEL, endpoint: 'wss://unused', apiKey: 'test' }, { gatewayFactory: gateways.factory });
+  const service = await startService({ root: ROOT, dataDir, port: 0, model: MODEL, endpoint: DEFAULT_ENDPOINT, apiKey: 'test', ...configPatch }, { gatewayFactory: gateways.factory });
   t.after(async () => {
     await service.close();
     fs.rmSync(dataDir, { recursive: true, force: true });
@@ -131,6 +142,96 @@ test('serves health and session notes, rejects cross-origin requests, and protec
   await client.waitFor(message => message.type === 'note_saved');
   const notes = await fetch(service.origin + `/api/sessions/${sessionId}/notes`).then(response => response.json());
   assert.equal(notes.notes[0].content, 'first note');
+});
+
+test('rejects connection configuration while a translation is active and accepts it when idle', async (t) => {
+  const { service } = await startTemporaryService(t);
+  const client = await openClient(service.origin);
+  t.after(() => client.close());
+  sendJson(client, { type: 'start', meeting_name: 'active configuration', target_language: 'en' });
+  await client.waitFor(message => message.type === 'ready');
+
+  const next = { endpoint: 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=' + MODEL, apiKey: 'next-key' };
+  assert.throws(() => service.configure(next), /请先停止当前同传/);
+
+  sendJson(client, { type: 'stop' });
+  await client.waitFor(message => message.type === 'stopped');
+  assert.deepEqual(service.configure(next), { endpoint: next.endpoint, hasKey: true });
+});
+
+test('a failed profile commit can roll an unconfigured runtime back to no API key', async (t) => {
+  const previous = { endpoint: DEFAULT_ENDPOINT, apiKey: '' };
+  const next = { endpoint: 'wss://next.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=' + MODEL, apiKey: 'next-key' };
+  const { service, configs } = await startTemporaryService(t, undefined, previous);
+  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddtrans-unconfigured-rollback-'));
+  t.after(() => fs.rmSync(profileDir, { recursive: true, force: true }));
+  const settings = createConnectionSettings({ userDataPath: profileDir, safeStorage: fakeSafeStorage() });
+  const failingFileSystem = new Proxy(fs, {
+    get(target, property) {
+      if (property === 'renameSync') return () => { throw new Error('simulated rename failure'); };
+      return target[property];
+    },
+  });
+  const staged = createConnectionSettings({ userDataPath: profileDir, safeStorage: fakeSafeStorage(), fileSystem: failingFileSystem }).prepareSave(next);
+  service.configure(next);
+  assert.throws(() => staged.commit(), /simulated rename failure/);
+  assert.deepEqual(service.configure(previous, { allowEmptyApiKey: true }), { endpoint: previous.endpoint, hasKey: false });
+
+  const client = await openClient(service.origin);
+  t.after(() => client.close());
+  sendJson(client, { type: 'start', meeting_name: 'unconfigured rollback', target_language: 'en' });
+  await client.waitFor(message => message.type === 'ready');
+  assert.deepEqual(configs.at(-1), previous);
+  assert.equal(fs.existsSync(settings.file), false);
+});
+
+test('active configuration rejection leaves the saved profile unchanged', async (t) => {
+  const { service } = await startTemporaryService(t);
+  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddtrans-active-profile-'));
+  t.after(() => fs.rmSync(profileDir, { recursive: true, force: true }));
+  const settings = createConnectionSettings({ userDataPath: profileDir, safeStorage: fakeSafeStorage() });
+  const previous = { endpoint: 'wss://previous.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=' + MODEL, apiKey: 'previous-key' };
+  const next = { endpoint: 'wss://next.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=' + MODEL, apiKey: 'next-key' };
+  settings.save(previous);
+  const staged = settings.prepareSave(next);
+  const client = await openClient(service.origin);
+  t.after(() => client.close());
+  sendJson(client, { type: 'start', meeting_name: 'active configuration profile', target_language: 'en' });
+  await client.waitFor(message => message.type === 'ready');
+  assert.throws(() => service.configure(next), /请先停止当前同传/);
+  staged.cleanup();
+  assert.deepEqual(settings.get(), { endpoint: previous.endpoint, hasKey: true });
+  assert.equal(settings.getSecret(), previous.apiKey);
+});
+
+test('a failed profile commit rolls the service back to the previous runtime config', async (t) => {
+  const { service, configs } = await startTemporaryService(t);
+  const profileDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ddtrans-rollback-profile-'));
+  t.after(() => fs.rmSync(profileDir, { recursive: true, force: true }));
+  const previous = { endpoint: 'wss://previous.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=' + MODEL, apiKey: 'previous-key' };
+  const next = { endpoint: 'wss://next.cn-beijing.maas.aliyuncs.com/api-ws/v1/realtime?model=' + MODEL, apiKey: 'next-key' };
+  const settings = createConnectionSettings({ userDataPath: profileDir, safeStorage: fakeSafeStorage() });
+  settings.save(previous);
+  service.configure(previous);
+  const failingFileSystem = new Proxy(fs, {
+    get(target, property) {
+      if (property === 'renameSync') return () => { throw new Error('simulated rename failure'); };
+      return target[property];
+    },
+  });
+  const failing = createConnectionSettings({ userDataPath: profileDir, safeStorage: fakeSafeStorage(), fileSystem: failingFileSystem });
+  const staged = failing.prepareSave(next);
+  service.configure(next);
+  assert.throws(() => staged.commit(), /simulated rename failure/);
+  service.configure(previous);
+
+  const client = await openClient(service.origin);
+  t.after(() => client.close());
+  sendJson(client, { type: 'start', meeting_name: 'rollback configuration', target_language: 'en' });
+  await client.waitFor(message => message.type === 'ready');
+  assert.deepEqual(configs.at(-1), previous);
+  assert.deepEqual(settings.get(), { endpoint: previous.endpoint, hasKey: true });
+  assert.equal(settings.getSecret(), previous.apiKey);
 });
 
 test('persists a fully associated source/target tail and readable WAV files only after model finish', async (t) => {

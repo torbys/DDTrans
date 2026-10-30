@@ -2,12 +2,13 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const { WebSocketServer, WebSocket } = require('ws');
-const { loadConfig, transportCapabilities } = require('./config');
+const { loadConfig, transportCapabilities, validateEndpoint } = require('./config');
 const { createStore } = require('./store');
 const { createTranslationSession } = require('./session');
 const { wavHeader } = require('./pcm-writer');
 
 async function startService(config, dependencies = {}) {
+  let runtimeConfig = config;
   const mediaDir = path.join(config.dataDir, 'media');
   const store = createStore({ dbPath: path.join(config.dataDir, 'translation.db'), mediaDir });
   const clients = new Set();
@@ -65,8 +66,8 @@ async function startService(config, dependencies = {}) {
     try {
       if (request.headers.origin && request.headers.origin !== origin) return json(response, 403, { error: '请求来源不受支持' });
       if (request.headers['sec-fetch-site'] === 'cross-site') return json(response, 403, { error: '请求来源不受支持' });
-      if (url.pathname === '/api/health') return json(response, 200, { ready: true, model: config.model, active_sessions: active.size });
-      if (url.pathname === '/api/capabilities') return json(response, 200, { model: config.model, transports: transportCapabilities(), source_language: 'auto', speaker_detection: true, input_sample_rate: 16000, output_sample_rate: 24000 });
+      if (url.pathname === '/api/health') return json(response, 200, { ready: true, model: runtimeConfig.model, active_sessions: active.size });
+      if (url.pathname === '/api/capabilities') return json(response, 200, { model: runtimeConfig.model, transports: transportCapabilities(), source_language: 'auto', speaker_detection: true, input_sample_rate: 16000, output_sample_rate: 24000 });
       if (url.pathname === '/api/sessions' && request.method === 'GET') {
         return json(response, 200, store.listSessions({ limit: Number(url.searchParams.get('limit') || 50), offset: Number(url.searchParams.get('offset') || 0), search: url.searchParams.get('search') || '', sort: url.searchParams.get('sort') || 'newest' }));
       }
@@ -149,7 +150,7 @@ async function startService(config, dependencies = {}) {
         const message = JSON.parse(raw.toString());
         if (message.type === 'start') {
           if (session) throw new Error('此连接已经创建会话');
-          session = createTranslationSession({ options: message, config, store, emit, gatewayFactory: dependencies.gatewayFactory });
+          session = createTranslationSession({ options: message, config: runtimeConfig, store, emit, gatewayFactory: dependencies.gatewayFactory });
           active.set(session.id, session);
           await session.start();
         } else if (!session) throw new Error('请先开始同传');
@@ -171,6 +172,19 @@ async function startService(config, dependencies = {}) {
     await new Promise((resolve, reject) => { server.once('error', reject); server.listen(config.port, '127.0.0.1', resolve); });
   } catch (error) { store.close(); throw error; }
   origin = 'http://127.0.0.1:' + server.address().port;
+  function configure(next, { allowEmptyApiKey = false } = {}) {
+    if (active.size > 0) throw new Error('请先停止当前同传，再保存翻译服务配置');
+    if (!next || typeof next !== 'object' || Array.isArray(next)) throw new Error('无效翻译服务配置');
+    const endpoint = validateEndpoint(next.endpoint);
+    const apiKey = typeof next.apiKey === 'string' ? next.apiKey.trim() : '';
+    if (!apiKey && !allowEmptyApiKey) throw new Error('请输入 API Key');
+    runtimeConfig = {
+      ...runtimeConfig,
+      endpoint,
+      apiKey,
+    };
+    return { endpoint: runtimeConfig.endpoint, hasKey: Boolean(runtimeConfig.apiKey) };
+  }
   async function close() {
     if (closing) return closing;
     closing = (async () => {
@@ -183,7 +197,7 @@ async function startService(config, dependencies = {}) {
     })();
     return closing;
   }
-  return { origin, close, store };
+  return { origin, close, store, configure };
 }
 module.exports = { startService };
 if (require.main === module) {
@@ -193,16 +207,37 @@ if (require.main === module) {
     if (process.parentPort) process.parentPort.postMessage({ type: 'stopped' });
     else process.exit(0);
   }
-  if (process.parentPort) process.parentPort.on('message', event => { if (event.data?.type === 'shutdown') void shutdown(); });
+  if (process.parentPort) process.parentPort.on('message', event => {
+    const message = event.data;
+    if (message?.type === 'shutdown') void shutdown();
+    if (message?.type === 'configure') {
+      try {
+        const result = service?.configure(message.config, { allowEmptyApiKey: message.allowEmptyApiKey === true });
+        if (result) process.parentPort.postMessage({ type: 'configured', requestId: message.requestId, result });
+        else process.parentPort.postMessage({ type: 'configure-error', requestId: message.requestId, message: '同传后台尚未就绪' });
+      } catch (error) {
+        process.parentPort.postMessage({ type: 'configure-error', requestId: message.requestId, message: error.message });
+      }
+    }
+  });
   process.on('SIGINT', () => void shutdown());
   process.on('SIGTERM', () => void shutdown());
-  startService(loadConfig()).then(result => {
-    service = result;
-    if (process.parentPort) process.parentPort.postMessage({ type: 'ready', origin: service.origin });
-    else console.log('DDtrans ready: ' + service.origin);
-  }).catch(error => {
+  let initialConfig;
+  try { initialConfig = process.env.DDTRANS_SERVICE_CONFIG ? JSON.parse(process.env.DDTRANS_SERVICE_CONFIG) : loadConfig(); }
+  catch (error) {
     if (process.parentPort) process.parentPort.postMessage({ type: 'error', message: error.message });
     else console.error(error.message);
     process.exitCode = 1;
-  });
+  }
+  if (initialConfig) {
+    startService(initialConfig).then(result => {
+      service = result;
+      if (process.parentPort) process.parentPort.postMessage({ type: 'ready', origin: service.origin });
+      else console.log('DDtrans ready: ' + service.origin);
+    }).catch(error => {
+      if (process.parentPort) process.parentPort.postMessage({ type: 'error', message: error.message });
+      else console.error(error.message);
+      process.exitCode = 1;
+    });
+  }
 }
