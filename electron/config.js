@@ -3,18 +3,35 @@ const path = require('node:path');
 
 const LANGUAGES = new Set('zh en ja ko fr de es pt ru ar it id vi th tr hi ms nl ur nb sv da he fi pl is cs fil fa yue el af ast be bg bn bs ca ceb et gl gu hr hu jv kk kn ky lv mk ml mr pa ro sk sl sw tg az uk'.split(' '));
 const TEXT_ONLY = new Set('yue el af ast be bg bn bs ca ceb et gl gu hr hu jv kk kn ky lv mk ml mr pa ro sk sl sw tg az uk'.split(' '));
+const MODEL = 'qwen3.8-livetranslate-flash-realtime';
+const DEFAULT_ENDPOINT = 'wss://dashscope.aliyuncs.com/api-ws/v1/realtime?model=' + MODEL;
 
-function loadConfig(root = path.resolve(__dirname, '..')) {
+function validateEndpoint(endpoint) {
+  if (typeof endpoint !== 'string' || !endpoint.trim()) throw new Error('请输入 Qwen 3.8 实时 WSS 地址');
+  let url;
+  try { url = new URL(endpoint.trim()); }
+  catch { throw new Error('QWEN_WS_URL 必须是有效的 WSS 地址'); }
+  if (url.protocol !== 'wss:' || url.searchParams.get('model') !== MODEL) throw new Error('QWEN_WS_URL 必须为 qwen3.8 的 wss 实时地址');
+  return url.href;
+}
+
+function loadConfig(options = {}) {
+  if (typeof options === 'string') options = { root: options };
+  const root = options.root || path.resolve(__dirname, '..');
   const envFile = path.join(root, '.env');
-  if (fs.existsSync(envFile)) process.loadEnvFile(envFile);
-  const model = 'qwen3.8-livetranslate-flash-realtime';
-  const endpoint = process.env.QWEN_WS_URL;
-  if (!endpoint) throw new Error('请在 .env 中配置 QWEN_WS_URL');
-  const url = new URL(endpoint);
-  if (url.protocol !== 'wss:' || url.searchParams.get('model') !== model) throw new Error('QWEN_WS_URL 必须为 qwen3.8 的 wss 实时地址');
-  const port = Number(process.env.SERVER_PORT || 0);
+  if (options.loadEnv !== false && fs.existsSync(envFile)) process.loadEnvFile(envFile);
+  const env = options.env || process.env;
+  const endpoint = validateEndpoint(options.endpoint ?? env.QWEN_WS_URL ?? DEFAULT_ENDPOINT);
+  const port = Number(options.port ?? env.SERVER_PORT ?? 0);
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new Error('SERVER_PORT 必须是 0–65535');
-  return { root, model, endpoint: url.href, apiKey: process.env.DASHSCOPE_API_KEY || '', port, dataDir: process.env.DDTRANS_DATA_DIR ? path.resolve(process.env.DDTRANS_DATA_DIR) : path.join(root, 'data') };
+  return {
+    root,
+    model: MODEL,
+    endpoint,
+    apiKey: options.apiKey ?? env.DASHSCOPE_API_KEY ?? '',
+    port,
+    dataDir: options.dataDir ? path.resolve(options.dataDir) : env.DDTRANS_DATA_DIR ? path.resolve(env.DDTRANS_DATA_DIR) : path.join(root, 'data'),
+  };
 }
 
 function buildSessionConfig(options = {}) {
@@ -47,4 +64,4 @@ function transportCapabilities() {
     { id: 'aoq', available: false, label: 'AOQ', reason: '尚未验证 Windows/Electron SDK 接入' },
   ];
 }
-module.exports = { loadConfig, buildSessionConfig, transportCapabilities };
+module.exports = { MODEL, DEFAULT_ENDPOINT, validateEndpoint, loadConfig, buildSessionConfig, transportCapabilities };

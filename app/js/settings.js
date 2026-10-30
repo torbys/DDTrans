@@ -219,6 +219,8 @@ async function initialize() {
     byId('testVirtualBtn').addEventListener('click', () => void testOutput('virtual'));
     byId('verifyVirtualBtn').addEventListener('click', () => void testOutput('virtual', true));
     byId('openSystemAudioBtn').addEventListener('click', () => void api.openSystemAudioSettings());
+    if (typeof api.openConnectionSettings === 'function') byId('connectionSettingsBtn').addEventListener('click', () => void api.openConnectionSettings());
+    else byId('connectionSettingsBtn').hidden = true;
     byId('permissionSettingsBtn').addEventListener('click', () => void api.openPermissionSettings());
     byId('minimizeBtn').addEventListener('click', () => void api.minimizeWindow());
     byId('closeBtn').addEventListener('click', async () => { try { await flush(); await api.closeWindow(); } catch (_) {} });

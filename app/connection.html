@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DDTrans 翻译服务配置</title>
+    <link rel="stylesheet" href="./css/connection-settings.css">
+</head>
+<body>
+    <div class="connection-app">
+        <header class="title-bar">
+            <div class="title-brand">
+                <span class="brand-mark">译</span>
+                <div><strong>翻译服务配置</strong><small>仅保存当前 Qwen 3.8 实时连接</small></div>
+            </div>
+            <div class="title-actions">
+                <button id="minimizeBtn" type="button" title="最小化" aria-label="最小化">−</button>
+                <button id="closeBtn" type="button" title="关闭" aria-label="关闭">×</button>
+            </div>
+        </header>
+        <main class="connection-content">
+            <section class="page-intro">
+                <p class="eyebrow">连接</p>
+                <h1>翻译服务</h1>
+                <p>填写百炼 Qwen 3.8 实时 WebSocket 地址和 API Key。API Key 加密保存在这台电脑上。</p>
+            </section>
+            <form id="connectionForm" novalidate>
+                <div class="field">
+                    <label for="endpoint">WSS 实时地址</label>
+                    <input id="endpoint" name="endpoint" type="url" autocomplete="url" spellcheck="false" required>
+                    <small>必须使用 <code>wss://</code>，并包含 <code>model=qwen3.8-livetranslate-flash-realtime</code>。</small>
+                </div>
+                <div class="field">
+                    <label for="apiKey">API Key</label>
+                    <input id="apiKey" name="apiKey" type="password" autocomplete="off" spellcheck="false" placeholder="留空则保留已保存的 Key">
+                    <small id="keyHint"></small>
+                </div>
+                <p id="connectionStatus" class="status" role="status"></p>
+                <div class="actions">
+                    <button id="saveBtn" class="button primary" type="submit">保存</button>
+                </div>
+            </form>
+        </main>
+    </div>
+    <script type="module" src="./js/connection-settings.js"></script>
+</body>
+</html>
