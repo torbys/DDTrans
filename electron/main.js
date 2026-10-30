@@ -3,7 +3,8 @@ const os = require('node:os');
 const path = require('node:path');
 const { createOverlayPreferences } = require('./window-preferences.js');
 const { createAudioSettings } = require('./audio-settings.js');
-const { loadConfig } = require('./config.js');
+const { loadConfig, validateEndpoint } = require('./config.js');
+const { testRealtimeConnection } = require('./gateway.js');
 const { createConnectionSettings, validateApiKey } = require('./connection-settings.js');
 
 if (process.env.DDTRANS_TEST_USER_DATA) app.setPath('userData', process.env.DDTRANS_TEST_USER_DATA);
@@ -246,7 +247,7 @@ function scheduleOverlayClamp() {
 }
 
 function updatePowerSaveBlocker(snapshot) {
-  const shouldBlock = snapshot?.phase === 'running';
+  const shouldBlock = ['running', 'reconnecting'].includes(snapshot?.phase);
   if (shouldBlock && powerSaveBlockerId === undefined) powerSaveBlockerId = powerSaveBlocker.start('prevent-app-suspension');
   if (!shouldBlock && powerSaveBlockerId !== undefined) {
     if (powerSaveBlocker.isStarted(powerSaveBlockerId)) powerSaveBlocker.stop(powerSaveBlockerId);
@@ -604,7 +605,18 @@ function loadRuntimeConfig() {
 }
 
 function connectionSettingsView() {
-  return { endpoint: backendConfig.endpoint, hasKey: Boolean(backendConfig.apiKey) };
+  return { endpoint: backendConfig.endpoint, hasKey: Boolean(backendConfig.apiKey), source: app.isPackaged ? 'saved' : 'environment' };
+}
+
+function resolveConnectionInput(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('无效翻译服务配置');
+  const endpoint = validateEndpoint(input.endpoint);
+  if (input.apiKey !== undefined && typeof input.apiKey !== 'string') throw new Error('API Key 格式无效');
+  const enteredKey = input.apiKey?.trim();
+  const saved = getConnectionSettingsStore();
+  const apiKey = enteredKey ? validateApiKey(enteredKey) : backendConfig.apiKey || (saved.get().hasKey ? saved.getSecret() : '');
+  if (!apiKey) throw new Error('请输入 API Key');
+  return { endpoint, apiKey };
 }
 
 function serializeConnectionSave(work) {
@@ -736,29 +748,10 @@ ipcMain.handle('get-connection-settings', event => {
 ipcMain.handle('save-connection-settings', (event, input) => {
   trusted(event);
   return serializeConnectionSave(async () => {
-    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('无效翻译服务配置');
-    const endpoint = input.endpoint;
-    if (typeof endpoint !== 'string') throw new Error('请输入 Qwen 3.8 实时 WSS 地址');
-    if (input.apiKey !== undefined && typeof input.apiKey !== 'string') throw new Error('API Key 格式无效');
+    const { endpoint, apiKey } = resolveConnectionInput(input);
     const saved = getConnectionSettingsStore();
-    const profile = saved.get();
-    const enteredKey = input.apiKey?.trim();
-    let apiKey;
-    let profileKey;
-    if (enteredKey) {
-      apiKey = validateApiKey(enteredKey);
-      profileKey = apiKey;
-    } else if (profile.hasKey) {
-      apiKey = saved.getSecret();
-      profileKey = undefined;
-    } else if (backendConfig.apiKey) {
-      apiKey = backendConfig.apiKey;
-      profileKey = undefined;
-    } else {
-      throw new Error('请输入 API Key');
-    }
     const previous = { ...backendConfig };
-    const staged = saved.prepareSave({ endpoint, apiKey: profileKey });
+    const staged = saved.prepareSave({ endpoint, apiKey });
     const next = { ...previous, endpoint, apiKey };
     let accepted;
     try {
@@ -781,6 +774,10 @@ ipcMain.handle('save-connection-settings', (event, input) => {
       throw new Error('连接设置未写入，已恢复运行配置：' + error.message);
     }
   });
+});
+ipcMain.handle('test-connection-settings', async (event, input) => {
+  trusted(event);
+  return testRealtimeConnection(resolveConnectionInput(input));
 });
 ipcMain.handle('open-system-audio-settings', async event => {
   trusted(event);

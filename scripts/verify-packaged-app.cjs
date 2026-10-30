@@ -40,7 +40,7 @@ async function evaluate(expression) {
 }
 const electron = 'process.mainModule.require("electron")';
 function pageExpression(page, code) {
-  return `(async () => { const window = ${electron}.BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.webContents.getURL().endsWith(${JSON.stringify('/' + page)})); if (!window) return null; return window.webContents.executeJavaScript(${JSON.stringify(code)}, true); })()`;
+  return `(async () => { const window = ${electron}.BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.webContents.getURL().split(/[?#]/)[0].endsWith(${JSON.stringify('/' + page)})); if (!window) return null; return window.webContents.executeJavaScript(${JSON.stringify(code)}, true); })()`;
 }
 const report = { checkedAt: new Date().toISOString(), mode: 'packaged-app-no-model-calls', checks: {} };
 (async () => {
@@ -107,6 +107,12 @@ const report = { checkedAt: new Date().toISOString(), mode: 'packaged-app-no-mod
     fs.mkdirSync(path.dirname(screenshot), { recursive: true });
     await evaluate(`(async () => { const window = ${electron}.BrowserWindow.getAllWindows().find(window => window.webContents.getURL().endsWith('/connection.html')); process.mainModule.require('node:fs').writeFileSync(${JSON.stringify(screenshot)}, (await window.webContents.capturePage()).toPNG()); return true; })()`);
     report.checks.connectionScreenshot = path.relative(root, screenshot);
+    await evaluate(`(async () => { const window = ${electron}.BrowserWindow.getAllWindows().find(window => window.webContents.getURL().endsWith('/home.html')); await window.loadURL(${JSON.stringify(originBefore + '/index.html?name=Packaged%20UI%20verification&targetLang=en')}); return true; })()`);
+    await poll(() => evaluate(pageExpression('index.html', 'document.getElementById("targetLanguageSelect")?.options.length > 0')), 'packaged language controls');
+    const assets = await evaluate(pageExpression('index.html', '(async()=>{await document.fonts.ready;await new Promise(resolve=>requestAnimationFrame(()=>requestAnimationFrame(resolve)));return {images:[...document.images].every(image=>image.complete&&image.naturalWidth>0),font:document.fonts.check("20px remixicon"),target:document.getElementById("targetLanguageSelect").value,source:!!document.getElementById("sourceLangDropdown"),placeholderHidden:document.getElementById("sessionStatusRow").hidden,icons:[...document.querySelectorAll("#settingsBtn i,#overlayBtn i")].map(icon=>getComputedStyle(icon,"::before").content)}})()'));
+    assert.equal(assets.images, true); assert.equal(assets.font, true); assert.equal(assets.target, 'en'); assert.equal(assets.source, false); assert.equal(assets.placeholderHidden, true);
+    assert.equal(assets.icons.length, 2); assert.ok(assets.icons.every(content => content && content !== 'none'));
+    report.checks.offlinePageAssets = assets;
     report.passed = true;
   } catch (error) {
     report.passed = false; report.error = error.stack || error.message; process.exitCode = 1;

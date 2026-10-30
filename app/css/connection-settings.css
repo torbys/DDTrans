@@ -26,7 +26,7 @@ h1 { margin: 0 0 8px; font-size: 25px; }
 code { font-family: Consolas, monospace; font-size: .95em; }
 .status { min-height: 20px; margin: 2px 0 18px; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .status[data-error="true"] { color: var(--red); }
-.actions { display: flex; justify-content: flex-end; }
+.actions { display: flex; justify-content: flex-end; gap: 10px; }
 .button { min-height: 36px; padding: 0 15px; border: 1px solid transparent; border-radius: 8px; font-size: 12px; font-weight: 650; cursor: pointer; }
 .button.primary { background: #173848; color: #fff; }
 .button.primary:hover { background: #21546a; }

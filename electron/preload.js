@@ -48,6 +48,7 @@ if (location.pathname === '/media-host.html') {
     openConnectionSettings: () => invoke('open-connection-settings'),
     getConnectionSettings: () => invoke('get-connection-settings'),
     saveConnectionSettings: settings => invoke('save-connection-settings', settings),
+    testConnectionSettings: settings => invoke('test-connection-settings', settings),
     openSystemAudioSettings: () => invoke('open-system-audio-settings'),
     getAudioSettings: () => invoke('get-audio-settings'),
     openPermissionSettings: () => invoke('open-permission-settings'),

@@ -10,11 +10,13 @@
 
 ## Windows 安装版与虚拟麦克风
 
-下载安装 `DDTrans-Setup-2.1.0-x64.exe` 时，虚拟音频设备随应用一并安装，无需另装音频软件。首次安装后按提示正常重启 Windows，不需要进入 BIOS 或更改 Secure Boot。
+下载安装 `DDTrans-Setup-2.1.1-x64.exe` 时，虚拟音频设备随应用一并安装，无需另装音频软件。首次安装后按提示正常重启 Windows，不需要进入 BIOS 或更改 Secure Boot。
 
 设备由 **VB-CABLE / VB-Audio Software** 提供；VB-CABLE 是 Donationware，欢迎通过 [原厂官网](https://www.vb-cable.com/) 捐赠支持。新装录音端点显示为 `DDTrans Virtual Microphone (VB-Audio Virtual Cable)`；已有 VB-CABLE 直接复用并保留原名。设备来源、分发条件与验收边界见 [Windows 安装方案](docs/windows-installer-virtual-audio-2026-10-30.md)。
 
-打开音频设置的“翻译服务配置”，填入自己的实时 WSS 地址和 API Key。安装包不包含项目 Key；Key 在本机加密保存，数据库和录音写入用户目录。设置默认发送语言，开始“发言翻译”，再在会议或游戏里选择设置页显示的虚拟麦克风。源语言自动识别，默认只发送译音，可加入原声并单独调整音量。
+打开音频设置的“翻译服务配置”，填入同一业务空间的接入地址和 API Key。可粘贴 HTTPS Base URL 或实时 WSS 地址；保存时先完成真实连接检测。安装版配置与源码 .env 独立。安装包不包含项目 Key；Key 在本机加密保存，数据库和录音写入用户目录。设置默认发送语言，开始“发言翻译”，再在会议或游戏里选择设置页显示的虚拟麦克风。源语言自动识别，默认只发送译音，可加入原声并单独调整音量。
+
+2.1.1 修复了离线图标和模型图片、统一目标语言选择，并将热词保存到 SQLite。网络中断最多重连两次，本地录音继续保存，缺口明确记录。三协议真实测试后继续以 WebSocket 为主连接，参见 [桌面界面与保存修复](docs/desktop-ui-storage-2026-10-30.md) 和 [WebSocket / WebRTC / AOQ 实测与断线契约](docs/realtime-transports-2026-10-30.md)。
 
 开发者构建完整离线 EXE：
 
@@ -52,7 +54,7 @@ https://<业务空间域名>/compatible-mode/v1
 wss://<业务空间域名>/api-ws/v1/realtime?model=qwen3.8-livetranslate-flash-realtime
 ```
 
-程序读取显式配置的 `QWEN_WS_URL`，不会自动把 HTTP 地址转换为 WSS。启动时会检查 WSS 协议和模型参数；模型返回的 `session.updated` 还必须确认目标 3.8 模型、输出模态、目标语言、说话人分段、热词及音频格式。请求字段被忽略时会拒绝开始采集。Key 由 Node 服务用于模型连接，不写入页面或文档。
+程序读取显式配置的 `QWEN_WS_URL`，也接受业务空间 HTTPS Base URL 并转换为同域名的实时 WSS 地址。启动时检查协议和模型参数；模型返回的 `session.updated` 还必须确认目标 3.8 模型、输出模态、目标语言、说话人分段、热词及音频格式。请求字段被忽略时会拒绝开始采集。Key 由后台用于模型连接，不写入页面或文档。
 
 ```powershell
 npm start

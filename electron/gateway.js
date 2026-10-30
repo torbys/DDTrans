@@ -1,7 +1,8 @@
 const WebSocket = require('ws');
 const { performance } = require('node:perf_hooks');
+const { connectionError } = require('./connection-errors');
 
-function createRealtimeGateway({ endpoint, apiKey, transport = 'websocket', onEvent = () => {}, onFailure = () => {} }) {
+function createRealtimeGateway({ endpoint, apiKey, transport = 'websocket', connectTimeoutMs = 20000, onEvent = () => {}, onFailure = () => {} }) {
   if (transport !== 'websocket') throw new Error('当前已实现的传输方式为 WebSocket');
   let ws;
   let connected = false;
@@ -12,8 +13,10 @@ function createRealtimeGateway({ endpoint, apiKey, transport = 'websocket', onEv
   let rejectFinish;
   let finishTimer;
   let heartbeat;
+  let lastPong = Date.now();
   let rejectConnect;
   let connectTimer;
+  let failure;
   const metrics = {};
   const origin = performance.now();
   const elapsed = () => Math.round(performance.now() - origin);
@@ -23,28 +26,41 @@ function createRealtimeGateway({ endpoint, apiKey, transport = 'websocket', onEv
     ws.send(JSON.stringify(event));
   };
   function fail(error) {
+    if (failure || closing || finished) return;
+    failure = error;
+    connected = false;
     clearTimeout(connectTimer);
     clearTimeout(finishTimer);
+    clearInterval(heartbeat);
     rejectConnect?.(error);
     rejectFinish?.(error);
-    if (!closing) onFailure(error);
+    ws?.terminate();
+    onFailure(error);
   }
   async function connect(session) {
     if (!apiKey) throw new Error('未配置 API Key，请打开翻译服务配置后保存');
     return new Promise((resolve, reject) => {
       rejectConnect = reject;
-      connectTimer = setTimeout(() => fail(new Error('模型会话配置超时')), 20000);
-      ws = new WebSocket(endpoint, { headers: { Authorization: 'Bearer ' + apiKey }, handshakeTimeout: 15000, maxPayload: 8 * 1024 * 1024 });
+      connectTimer = setTimeout(() => fail(connectionError({ code: 'connection_timeout', message: '模型连接或会话配置超时' })), connectTimeoutMs);
+      ws = new WebSocket(endpoint, { headers: { Authorization: 'Bearer ' + apiKey }, handshakeTimeout: Math.min(15000, connectTimeoutMs), maxPayload: 8 * 1024 * 1024 });
       ws.on('open', () => {
         metrics.connect_ms = elapsed();
-        heartbeat = setInterval(() => { if (ws.readyState === WebSocket.OPEN) ws.ping(); }, 15000);
+        lastPong = Date.now();
+        heartbeat = setInterval(() => {
+          if (Date.now() - lastPong > 30000) fail(connectionError({ message: '模型网络心跳超时' }));
+          else if (ws.readyState === WebSocket.OPEN) ws.ping();
+        }, 15000);
         heartbeat.unref();
       });
-      ws.on('unexpected-response', (request, response) => { fail(new Error('模型握手失败：HTTP ' + response.statusCode)); ws.terminate(); });
-      ws.on('error', fail);
+      ws.on('pong', () => { lastPong = Date.now(); });
+      ws.on('unexpected-response', (request, response) => {
+        response.resume();
+        fail(connectionError({ status: response.statusCode, requestId: response.headers['x-request-id'] || response.headers['x-dashscope-request-id'] }));
+      });
+      ws.on('error', error => fail(connectionError({ message: error.message.replaceAll(apiKey, '[redacted]') })));
       ws.on('close', (code, reason) => {
         clearInterval(heartbeat);
-        if (!closing && !finished) fail(new Error('模型连接提前关闭：' + code + ' ' + reason.toString()));
+        if (!closing && !finished) fail(connectionError({ code: [1000, 1008, 1009].includes(code) ? 'session_closed' : 'network_error', message: '模型连接已关闭（' + code + '）' }));
       });
       ws.on('message', raw => {
         try {
@@ -70,8 +86,7 @@ function createRealtimeGateway({ endpoint, apiKey, transport = 'websocket', onEv
           }
           if (event.type === 'error') {
             const details = event.error || event;
-            const error = new Error(details.message || '模型返回错误');
-            error.code = details.code;
+            const error = connectionError({ code: details.code || 'model_error', message: String(details.message || '模型返回错误').replaceAll(apiKey, '[redacted]') });
             onEvent(event);
             fail(error);
             return;
@@ -95,6 +110,7 @@ function createRealtimeGateway({ endpoint, apiKey, transport = 'websocket', onEv
     send({ type: 'input_audio_buffer.append', audio: Buffer.from(pcm).toString('base64') });
   }
   function finish() {
+    if (failure) return Promise.reject(failure);
     if (finishing) return finishing;
     if (finished) return Promise.resolve();
     finishing = new Promise((resolve, reject) => {
@@ -110,9 +126,20 @@ function createRealtimeGateway({ endpoint, apiKey, transport = 'websocket', onEv
     clearTimeout(connectTimer);
     clearTimeout(finishTimer);
     clearInterval(heartbeat);
+    const cancelled = new Error('模型连接已取消');
+    rejectConnect?.(cancelled);
+    rejectFinish?.(cancelled);
     if (ws?.readyState === WebSocket.OPEN) ws.close();
     else if (ws?.readyState === WebSocket.CONNECTING) ws.terminate();
   }
   return { connect, sendAudio, finish, close, metrics };
 }
-module.exports = { createRealtimeGateway };
+async function testRealtimeConnection(config) {
+  const { buildSessionConfig } = require('./config');
+  const gateway = createRealtimeGateway(config);
+  try {
+    const accepted = await gateway.connect(buildSessionConfig({ target_language: 'en' }));
+    return { model: accepted.model, metrics: { ...gateway.metrics } };
+  } finally { gateway.close(); }
+}
+module.exports = { createRealtimeGateway, testRealtimeConnection };
