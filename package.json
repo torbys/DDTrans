@@ -1,6 +1,6 @@
 {
   "name": "ai-simultaneous-translation",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "Qwen 3.8 实时同传 · 说话人字幕与本地记录",
   "main": "electron/main.js",
   "scripts": {

@@ -20,7 +20,10 @@ async function poll(check, timeout = 20000) {
 const page = suffix => BrowserWindow.getAllWindows().find(window => !window.isDestroyed() && window.webContents.getURL().endsWith(suffix));
 const js = (window, code) => window.webContents.executeJavaScript(code, true);
 let verified = false;
-const report = { date: '2026-10-29', checks: {} };
+const report = { date: '2026-10-30', checks: {}, consoleErrors: [] };
+app.on('browser-window-created', (_event, window) => {
+    window.webContents.on('console-message', details => { if (details.level === 'error' || details.level === 3) report.consoleErrors.push(details.message); });
+});
 
 async function nativeAudioTest() {
     const { createAudioMixBus, classifyAudioDevices } = await import('/js/audio-mix-bus.js');
@@ -124,6 +127,7 @@ async function nativeAudioTest() {
 }
 
 app.whenReady().then(async () => {
+    console.log(JSON.stringify({ probeRoot: root, appRoot: app.getAppPath() }));
     const home = await poll(() => page('/home.html'));
     await poll(() => !home.webContents.isLoadingMainFrame());
     await js(home, 'document.getElementById("openSettingsBtn").click()');
@@ -194,7 +198,7 @@ app.whenReady().then(async () => {
     fs.writeFileSync(path.join(imageDir, 'audio-settings-2026-10-29.png'), (await settings.webContents.capturePage()).toPNG());
     fs.writeFileSync(path.join(probeDir, 'audio-routing-verification.json'), JSON.stringify(report, null, 2));
     verified = true; console.log(JSON.stringify(report, null, 2)); app.quit();
-}).catch(error => { console.error(error.stack || error.message); process.exitCode = 1; app.quit(); });
+}).catch(error => { console.error(error.stack || error.message); console.error(JSON.stringify(report)); process.exitCode = 1; app.quit(); });
 app.on('will-quit', event => { if (!verified) { event.preventDefault(); app.exit(1); } });
 setTimeout(() => { if (!verified) { console.error('audio routing verification timeout'); process.exitCode = 1; app.quit(); } }, 60000).unref();
 require('../electron/main.js');
